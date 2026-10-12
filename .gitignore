@@ -1,1 +1,11 @@
 .idea/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+*.egg-info/
+experiments/runs/*
+experiments/editor/*
+!experiments/runs/.gitkeep
+!experiments/editor/.gitkeep

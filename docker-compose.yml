@@ -1,0 +1,21 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+    volumes:
+      - ./experiments:/app/experiments
+    environment:
+      - WORKERS_EVAL=0                     # 0 = auto (cpu_count - 1)
+      - EVOSIM_DATA_DIR=/app/experiments   # прогони та стан конструктора
+    expose:
+      - "8000"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend

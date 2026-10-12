@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Adaptive EvoSim</title>
+<link rel="stylesheet" href="css/theme.css">
+</head>
+<body>
+<div id="js-error" hidden></div>
+
+<header>
+  <div class="brand">Adaptive <span>EvoSim</span></div>
+  <nav>
+    <button data-tab="editor" class="active">Конструктор</button>
+    <button data-tab="simulation">Симуляція</button>
+    <button data-tab="analytics">Аналітика</button>
+  </nav>
+  <div class="spacer"></div>
+  <div class="badge" id="project-saved" title="Стан конструктора у experiments/editor/">не збережено</div>
+  <div class="badge" id="api-badge">Сервер: …</div>
+</header>
+
+<main>
+  <!-- ================= КОНСТРУКТОР ================= -->
+  <section class="tab active" id="tab-editor">
+    <aside class="sidebar">
+
+      <div class="group">
+        <h3>Інструмент</h3>
+        <div class="tools">
+          <button data-tool="creature" class="active">Істота</button>
+          <button data-tool="predator">Хижак</button>
+          <button data-tool="scene">Сцена</button>
+        </div>
+        <p class="small muted" style="margin:8px 0 0">«Істота» й «Хижак» — окремі сутності;
+          «Сцена» — світ: перешкоди, маршрути патрулювання та точки появи популяції.
+          Комбінуються вони на вкладці «Симуляція».</p>
+      </div>
+
+      <!-- Тіло -->
+      <div class="group" data-panel="creature">
+        <h3>Центральне тіло</h3>
+        <div class="row">
+          <label for="body-shape">Форма</label>
+          <select id="body-shape" title="body.shape">
+            <option value="circle">коло</option>
+            <option value="polygon">полігон</option>
+          </select>
+        </div>
+        <div data-when-shape="circle">
+          <div class="row"><label title="body.radius">Радіус <b class="mono" id="body-radius-v">0.80</b></label>
+            <input type="range" id="body-radius" min="0.3" max="1.5" step="0.01" value="0.8"></div>
+        </div>
+        <div data-when-shape="polygon">
+          <p class="small muted">Клікай по полотну: 3–8 вершин опуклого полігона (центр = центр мас істоти).</p>
+          <div class="btns">
+            <button id="poly-start">Малювати полігон</button>
+            <button id="poly-finish">Завершити</button>
+            <button id="poly-cancel" class="danger">Скасувати</button>
+          </div>
+        </div>
+        <div class="row"><label title="body.density">Густина <b class="mono" id="body-density-v">1.00</b></label>
+          <input type="range" id="body-density" min="0.5" max="3" step="0.01" value="1"></div>
+        <div class="row"><label for="creature-name" title="name">Назва істоти</label>
+          <input type="text" id="creature-name" value="swimmer-v1"></div>
+      </div>
+
+      <!-- Кінцівки -->
+      <div class="group" data-panel="creature">
+        <h3>Кінцівки (<span id="limb-count">0</span>/6)</h3>
+        <p class="small muted">Клік по вільному периметру тіла додає кінцівку; клік по наявній точці
+          кріплення вибирає її. <b>Ctrl/⌘ + клік</b> — додати до вибраних, <b>Shift + клік</b> у списку —
+          діапазон. Зміни застосовуються до всіх вибраних кінцівок.</p>
+        <div class="btns">
+          <button id="limb-add" class="primary">+ Кінцівка</button>
+        </div>
+        <div class="btns" style="margin-top:6px">
+          <button id="limb-select-all">Вибрати всі</button>
+          <button id="limb-select-none">Зняти вибір</button>
+        </div>
+        <ul class="list" id="limb-list"></ul>
+        <p class="small ok mono" id="limb-sel-info">Кінцівку не вибрано</p>
+        <div id="limb-form" hidden>
+          <hr>
+          <div class="row"><label title="attach_angle — кут точки кріплення на периметрі">Кут кріплення
+            <b class="mono" id="limb-attach-v">0°</b></label>
+            <input type="range" id="limb-attach" min="-3.1416" max="3.1416" step="0.0001" value="0"></div>
+          <div class="row"><label title="rest_angle — базова орієнтація кінцівки">Нейтральний кут
+            <b class="mono" id="limb-rest-v">0°</b></label>
+            <input type="range" id="limb-rest" min="-3.1416" max="3.1416" step="0.0001" value="0"></div>
+          <p class="small muted">Діапазони руху суглобів: <span class="mono" id="limb-range">—</span></p>
+          <div class="btns">
+            <button id="seg-add">+ сегмент</button>
+            <button id="limb-del" class="danger">Видалити кінцівку</button>
+          </div>
+          <ul class="list" id="seg-list"></ul>
+          <div id="seg-form" hidden>
+            <hr>
+            <div class="row"><label title="length">Довжина</label>
+              <input type="number" id="seg-length" min="0.3" max="2" step="0.01"></div>
+            <div class="row"><label title="width">Ширина</label>
+              <input type="number" id="seg-width" min="0.05" max="0.4" step="0.01"></div>
+            <div class="row"><label title="density">Густина</label>
+              <input type="number" id="seg-density" min="0.5" max="3" step="0.01"></div>
+            <div class="row"><label title="joint.angle_min, рад">Кут min, рад
+              <b class="mono" id="seg-amin-deg">—</b></label>
+              <input type="number" id="seg-amin" min="-2.5" max="0" step="0.01"></div>
+            <div class="row"><label title="joint.angle_max, рад">Кут max, рад
+              <b class="mono" id="seg-amax-deg">—</b></label>
+              <input type="number" id="seg-amax" min="0" max="2.5" step="0.01"></div>
+            <div class="row"><label title="joint.motor_torque">Момент мотора</label>
+              <input type="number" id="seg-torque" min="10" max="500" step="1"></div>
+            <p class="small muted mono" id="seg-range">—</p>
+            <div class="btns"><button id="seg-del" class="danger">Видалити сегмент</button></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Сцена -->
+      <div class="group" data-panel="scene">
+        <h3>Що розставляємо</h3>
+        <div class="tools" style="grid-template-columns:repeat(3,1fr)">
+          <button data-scene="obstacle" class="active">Перешкоди</button>
+          <button data-scene="route">Маршрути</button>
+          <button data-scene="spawn">Точки появи</button>
+        </div>
+      </div>
+
+      <!-- Сцена → маршрути патрулювання -->
+      <div class="group" data-panel="scene" data-scene="route">
+        <h3>Маршрути хижаків (<span id="route-count">0</span>/8)</h3>
+        <p class="small muted">Клік по полотну додає точку маршруту вибраному хижаку
+          (потрібно ≥2). Параметри беруться з бібліотеки — режим «Хижак».</p>
+        <div class="btns">
+          <button id="route-add" class="primary">+ Маршрут</button>
+          <button id="route-del" class="danger">Видалити</button>
+        </div>
+        <ul class="list" id="route-list"></ul>
+        <div id="route-form" hidden>
+          <hr>
+          <div class="row">
+            <label for="route-predator" title="predators[].preset">Хижак</label>
+            <select id="route-predator"></select>
+          </div>
+          <div class="row">
+            <label for="route-enabled" title="enabled">Активний</label>
+            <input type="checkbox" id="route-enabled" checked style="flex:none">
+          </div>
+          <p class="small muted mono" id="route-params">—</p>
+          <ul class="list" id="route-wp-list"></ul>
+          <div class="btns"><button id="route-clear" class="danger">Очистити маршрут</button></div>
+        </div>
+      </div>
+
+      <!-- Сцена → точки появи -->
+      <div class="group" data-panel="scene" data-scene="spawn">
+        <h3>Точки появи (<span id="spawn-count">0</span>/16)</h3>
+        <p class="small muted">Де з'являється популяція. Кілька точок = різні стартові
+          позиції для епізодів однієї особини (§7.3).</p>
+        <ul class="list" id="spawn-list"></ul>
+        <div id="spawn-form" hidden>
+          <hr>
+          <div class="row"><label title="spawns[].angle">Поворот <b class="mono" id="spawn-angle-v">0°</b></label>
+            <input type="range" id="spawn-angle" min="-3.1416" max="3.1416" step="0.0001" value="0"></div>
+          <div class="row"><label title="spawns[].position">Позиція</label>
+            <span class="mono small" id="spawn-pos">—</span></div>
+          <div class="row"><label title="spawns[].label">Підпис</label>
+            <input type="text" id="spawn-label" maxlength="64"></div>
+          <div class="btns"><button id="spawn-del" class="danger">Видалити точку</button></div>
+        </div>
+      </div>
+
+      <!-- Перешкоди -->
+      <div class="group" data-panel="scene" data-scene="obstacle">
+        <h3>Перешкоди (<span id="obs-count">0</span>)</h3>
+        <div class="row">
+          <label for="obs-type">Тип</label>
+          <select id="obs-type" title="obstacles[].type">
+            <option value="static_polygon">статичний полігон</option>
+            <option value="static_circle">статичне коло</option>
+            <option value="moving_polygon">рухомий полігон</option>
+          </select>
+        </div>
+        <div class="row scene-obs" data-when-obs="moving_polygon"><label title="period">Період, с</label>
+          <input type="number" id="obs-period" min="0.5" max="60" step="0.5" value="12"></div>
+        <div class="row scene-obs" data-when-obs="moving_polygon"><label title="phase">Фаза, рад</label>
+          <input type="number" id="obs-phase" min="-6.2832" max="6.2832" step="0.01" value="0"></div>
+        <div class="btns">
+          <button id="obs-finish">Завершити фігуру</button>
+          <button id="obs-cancel" class="danger">Скасувати</button>
+        </div>
+        <ul class="list" id="obs-list"></ul>
+        <div class="btns"><button id="obs-del" class="danger">Видалити вибрану</button></div>
+      </div>
+
+      <!-- Хижак як сутність -->
+      <div class="group" data-panel="predator">
+        <h3>Параметри хижака</h3>
+        <p class="small muted">Це сутність без прив'язки до світу: маршрут патрулювання
+          малюється у «Сцені». Зберігай у бібліотеку — список над полотном.</p>
+        <div class="row">
+          <label for="pred-enabled" title="enabled">Увімкнений</label>
+          <input type="checkbox" id="pred-enabled" checked style="flex:none">
+        </div>
+        <div class="row"><label title="r_body — радіус тіла (§8.1)">Розмір (радіус)
+          <b class="mono" id="pred-rbody-v">0.80</b></label>
+          <input type="range" id="pred-rbody" min="0.2" max="3" step="0.05" value="0.8"></div>
+        <div class="row"><label title="v_patrol">Швидк. патруля <b class="mono" id="pred-vpatrol-v">2.00</b></label>
+          <input type="range" id="pred-vpatrol" min="0.2" max="8" step="0.1" value="2"></div>
+        <div class="row"><label title="v_chase">Швидк. погоні <b class="mono" id="pred-vchase-v">3.50</b></label>
+          <input type="range" id="pred-vchase" min="0.2" max="12" step="0.1" value="3.5"></div>
+        <div class="row"><label title="r_detect">Радіус виявлення <b class="mono" id="pred-rdetect-v">8.00</b></label>
+          <input type="range" id="pred-rdetect" min="1" max="25" step="0.1" value="8"></div>
+        <div class="row"><label title="r_aura">Аура, радіус <b class="mono" id="pred-raura-v">5.00</b></label>
+          <input type="range" id="pred-raura" min="0.5" max="20" step="0.1" value="5"></div>
+        <div class="row"><label title="r_catch">Радіус спіймання <b class="mono" id="pred-rcatch-v">1.00</b></label>
+          <input type="range" id="pred-rcatch" min="0.2" max="5" step="0.1" value="1"></div>
+        <div class="row"><label for="pred-name" title="назва у бібліотеці">Назва</label>
+          <input type="text" id="pred-name" maxlength="64" value="хижак-1"></div>
+        <p class="small" id="pred-warn" style="margin-bottom:0"></p>
+      </div>
+
+      <!-- Морфологія: перевірка (лише в режимі «Істота») -->
+      <div class="group" data-panel="creature">
+        <h3>Перевірка морфології</h3>
+        <div class="btns">
+          <button id="btn-validate" class="primary">Перевірити</button>
+        </div>
+        <div class="kv" id="validate-kv" style="margin-top:8px">
+          <span>суглобів</span><span id="v-joints">—</span>
+          <span>входів мережі</span><span id="v-nin">—</span>
+          <span>розмір геному</span><span id="v-genome">—</span>
+          <span>хеш морфології</span><span id="v-hash">—</span>
+        </div>
+      </div>
+
+      <!-- Сцена: файли та варіанти (лише в режимах розстановки) -->
+      <div class="group" data-panel="scene">
+        <h3>Сцена</h3>
+        <div class="btns">
+          <button id="btn-save-scene">Зберегти у файл</button>
+          <button id="btn-load-scene">Завантажити з файлу</button>
+        </div>
+        <hr>
+        <div class="row">
+          <label for="preset-name">Варіант</label>
+          <input type="text" id="preset-name" maxlength="64" placeholder="напр. три хижаки">
+        </div>
+        <div class="btns">
+          <button id="preset-save" class="primary">Зберегти варіант</button>
+          <button id="preset-refresh">Оновити</button>
+        </div>
+        <ul class="list" id="preset-list"></ul>
+        <p class="small muted" id="preset-hint" style="margin-bottom:0">Клік по варіанту завантажує його.</p>
+      </div>
+
+      <!-- Дії -->
+      <div class="group">
+        <h3>Дії</h3>
+        <div class="btns">
+          <button id="btn-save-project" title="experiments/editor/last_session.json">Зберегти в проєкт</button>
+          <button id="btn-reset-project" class="danger">Скинути збережене</button>
+        </div>
+        <input type="file" id="file-input" accept="application/json" hidden>
+        <p class="small muted" style="margin:6px 0 0">Сцена зберігається автоматично й відкривається
+          при наступному завантаженні сторінки.</p>
+        <div id="validate-msg" class="small" style="margin-top:6px"></div>
+      </div>
+
+      <div class="group">
+        <h3>Вигляд</h3>
+        <div class="btns">
+          <button id="view-reset">Скинути камеру</button>
+          <button id="view-grid" class="active">Сітка</button>
+        </div>
+        <p class="small muted" style="margin-bottom:0">Переміщення: права кнопка або Shift+ЛКМ.
+          Масштаб: колесо мишки.</p>
+      </div>
+
+    </aside>
+
+    <div class="canvas-wrap">
+      <canvas id="editor-canvas"></canvas>
+
+      <!-- Бібліотека істот: випадаючий список прямо над полем -->
+      <div class="canvas-top" id="creature-lib">
+        <button id="lib-toggle" title="Збережені істоти">
+          <canvas id="lib-current-thumb" width="30" height="30"></canvas>
+          <span id="lib-current-name" class="mono">swimmer-v1</span>
+          <span id="lib-count" class="muted small">0</span>
+          <span aria-hidden="true">▾</span>
+        </button>
+        <div class="dropdown" id="lib-menu" hidden>
+          <div class="row" style="margin-bottom:8px">
+            <input type="text" id="lib-save-name" maxlength="64" placeholder="назва істоти">
+            <button id="lib-save" class="primary" style="flex:none">Зберегти</button>
+          </div>
+          <ul class="list" id="lib-list"></ul>
+          <div class="btns">
+            <button id="lib-export">Експорт JSON</button>
+            <button id="lib-import">Імпорт JSON</button>
+          </div>
+        </div>
+      </div>
+      <div class="statusbar">
+        <span class="hint" id="hint">Інструмент: тіло</span>
+        <span class="spacer"></span>
+        <span id="cursor">x 0.00  y 0.00</span>
+        <span id="zoom">×1.00</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= СИМУЛЯЦІЯ ================= -->
+  <section class="tab" id="tab-simulation">
+    <aside class="sidebar">
+      <div class="group">
+        <h3>Складові експерименту</h3>
+        <p class="small muted">Редактор готує сутності окремо; тут вони поєднуються
+          і «запікаються» копіями в конфіг прогону (§11).</p>
+        <div class="row"><label for="sim-creature">Істота</label>
+          <select id="sim-creature"></select></div>
+        <div class="row"><label for="sim-scene">Сцена</label>
+          <select id="sim-scene"></select></div>
+        <div class="row"><label for="sim-predator" title="застосовується до маршрутів без власного хижака">
+          Хижак</label><select id="sim-predator"></select></div>
+        <div class="btns"><button id="sim-refresh">Оновити списки</button></div>
+        <p class="small mono" id="sim-summary" style="margin:8px 0 0">—</p>
+      </div>
+      <div class="group">
+        <h3>Параметри генетичного алгоритму</h3>
+        <div class="row"><label title="name">Назва прогону</label><input type="text" id="ga-name" value="exp-baseline-01"></div>
+        <div class="row"><label title="seed — відтворюваність прогону">Сід</label><input type="number" id="ga-seed" value="42" min="0" step="1"></div>
+        <div class="row"><label title="ga.population">Популяція</label><input type="number" id="ga-population" value="100" min="4" step="1"></div>
+        <div class="row"><label title="ga.generations">Поколінь</label><input type="number" id="ga-generations" value="200" min="1" step="1"></div>
+        <div class="row"><label title="ga.elitism">Елітизм</label><input type="number" id="ga-elitism" value="2" min="0" step="1"></div>
+        <div class="row"><label title="ga.tournament_k">Розмір турніру</label><input type="number" id="ga-tournament_k" value="3" min="2" step="1"></div>
+        <div class="row"><label title="ga.p_crossover">Ймовірність кросовера</label><input type="number" id="ga-p_crossover" value="0.9" min="0" max="1" step="0.01"></div>
+        <div class="row"><label title="ga.p_mutation">Ймовірність мутації</label><input type="number" id="ga-p_mutation" value="0.05" min="0" max="1" step="0.01"></div>
+        <div class="row"><label title="ga.mutation_sigma">Сигма мутації</label><input type="number" id="ga-mutation_sigma" value="0.15" min="0.001" step="0.01"></div>
+        <div class="row"><label title="ga.episodes_per_individual">Епізодів на особину</label><input type="number" id="ga-episodes_per_individual" value="2" min="1" max="10" step="1"></div>
+        <div class="row"><label title="ga.episode_seconds">Тривалість епізоду, с</label><input type="number" id="ga-episode_seconds" value="30" min="1" step="1"></div>
+      </div>
+      <div class="group">
+        <h3>Ваги фітнес-функції</h3>
+        <div class="row"><label title="fitness_weights.survival — компонент S">Виживання</label><input type="number" id="fw-survival" value="3" min="0" step="0.1"></div>
+        <div class="row"><label title="fitness_weights.distance — компонент D">Дистанція</label><input type="number" id="fw-distance" value="1.5" min="0" step="0.1"></div>
+        <div class="row"><label title="fitness_weights.danger — компонент G_aura">Небезпека (аура)</label><input type="number" id="fw-danger" value="2" min="0" step="0.1"></div>
+        <div class="row"><label title="fitness_weights.collision — компонент C">Колізії</label><input type="number" id="fw-collision" value="1" min="0" step="0.1"></div>
+        <div class="row"><label title="fitness_weights.passivity — компонент Pas">Пасивність</label><input type="number" id="fw-passivity" value="1" min="0" step="0.1"></div>
+        <div class="row"><label title="fitness_weights.energy — компонент E_n">Енергія</label><input type="number" id="fw-energy" value="0.3" min="0" step="0.1"></div>
+      </div>
+      <div class="group">
+        <h3>Керування</h3>
+        <div class="btns">
+          <button id="sim-start" class="primary" disabled>Старт</button>
+          <button id="sim-pause" disabled>Пауза</button>
+          <button id="sim-resume" disabled>Продовжити</button>
+          <button id="sim-stop" disabled>Стоп</button>
+        </div>
+        <p class="small warn" style="margin-bottom:0">Запуск навчання з'являється на етапі 3 (генетичний алгоритм).</p>
+      </div>
+    </aside>
+    <div class="canvas-wrap" style="display:flex; flex-direction:column; padding:12px; gap:10px; overflow:auto">
+      <div class="group" style="margin:0">
+        <h3>Стан симуляції</h3>
+        <div class="kv">
+          <span>стан</span><span id="st-state">—</span>
+          <span>прогін</span><span id="st-run">—</span>
+          <span>покоління</span><span id="st-gen">—</span>
+          <span>режим</span><span id="st-mode">—</span>
+        </div>
+      </div>
+      <div class="group" style="margin:0; flex:1; min-height:0; display:flex; flex-direction:column">
+        <h3>Конфігурація експерименту (тіло запиту POST /api/simulation/start)</h3>
+        <pre class="out" id="exp-json" style="flex:1; max-height:none">—</pre>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= АНАЛІТИКА ================= -->
+  <section class="tab" id="tab-analytics">
+    <div class="placeholder">
+      <h2>Аналітика</h2>
+      <p>Графіки найкращого та середнього фітнесу, різноманіття популяції й покомпонентного
+         розкладу з'являються на етапі 5 (джерело даних — канал
+         <span class="mono">/ws/metrics</span> та
+         <span class="mono">GET /api/metrics/generations</span>).</p>
+    </div>
+  </section>
+</main>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
