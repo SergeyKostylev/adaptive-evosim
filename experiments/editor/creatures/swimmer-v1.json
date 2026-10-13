@@ -9,7 +9,7 @@
     },
     "limbs": [
       {
-        "attach_angle": 0.7854,
+        "attach_angle": 1.583,
         "rest_angle": 0.0,
         "segments": [
           {
@@ -35,7 +35,7 @@
         ]
       },
       {
-        "attach_angle": -2.3562,
+        "attach_angle": -1.5596,
         "rest_angle": 0.0,
         "segments": [
           {
@@ -61,8 +61,8 @@
         ]
       },
       {
-        "attach_angle": -0.7854,
-        "rest_angle": 0.0,
+        "attach_angle": -3.1416,
+        "rest_angle": 0.0007,
         "segments": [
           {
             "length": 0.7,
@@ -98,5 +98,5 @@
       }
     ]
   },
-  "saved_at": "2026-10-13T20:03:48+00:00"
+  "saved_at": "2026-10-13T20:51:08+00:00"
 }

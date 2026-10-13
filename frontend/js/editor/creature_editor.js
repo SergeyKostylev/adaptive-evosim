@@ -11,7 +11,7 @@
 import { DEFAULTS, clone } from '../state.js';
 import {
   polygon, circle, capsule, line, sector, arc, hexAlpha,
-  bodyPerimeterPoint, bodyNoseRadius, headingArrow,
+  bodyPerimeterPoint, drawEyes,
   segmentPoses, creatureReach, drawCreatureGhost,
 } from '../render/shapes.js';
 
@@ -284,7 +284,7 @@ export function drawCreature(ctx, view, api, colors) {
   circle(ctx, 0, 0, view.px(2.5), { fill: colors.accent });
   // Те саме позначення напрямку, що й у живому кадрі: істота завжди
   // редагується в початку координат, тож «вперед» — це локальна вісь X
-  headingArrow(ctx, bodyNoseRadius(body), { color: hexAlpha(colors.accent, 0.8), lw });
+  drawEyes(ctx, body, { color: colors.text, pupil: colors.bg });
 
   // Точки кріплення + маркування кінцівок
   creature.limbs.forEach((limb, li) => {

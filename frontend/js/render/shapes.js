@@ -208,23 +208,63 @@ export function bodyNoseRadius(body) {
   return Math.hypot(x, y) || 0.8;
 }
 
+//: Куди дивляться очі — ±рад від напрямку «вперед» (локальна вісь X).
+const EYE_BEARING = 0.55;
+//: Частка відстані до периметра в цьому напрямку. <1 гарантує, що око
+//  лишиться всередині будь-якого опуклого тіла, хай яке воно витягнуте.
+const EYE_INSET = 0.52;
+const EYE_RADIUS = 0.2;        // частка «радіуса вперед»
+const PUPIL_RATIO = 0.45;      // частка ока
+const EYE_CLEARANCE = 0.8;     // частка просвіту до найближчого краю
+
 /**
- * Покажчик «вперед» — локальна вісь X істоти. Тіло кругле, тож без нього не
- * видно, як істота обернена, а поворот — саме те, чим керуватиме мозок.
+ * Очі — позначення напрямку «вперед». Тіло кругле, тож без них не видно, як
+ * істота обернена, а поворот — саме те, чим керуватиме мозок.
  *
- * Малюється **від периметра** назовні, щоб не перекреслювати тіло. Викликати
- * треба в системі координат істоти (центр мас в початку, поворот застосовано).
- * Одна функція на всі три місця — редактор, «привид» у сцені та живий кадр:
- * позначення має читатись однаково скрізь.
+ * Положення рахується **від периметра** в напрямках ±EYE_BEARING, а не від
+ * уявного кола: для полігонального тіла очі так само лишаються всередині.
+ * Викликати треба в системі координат істоти (центр мас у початку, поворот
+ * застосовано). Одна функція на всі три рендери — редактор, «привид» у сцені
+ * та живий кадр: позначення має читатись однаково скрізь.
  */
-export function headingArrow(ctx, from, opts = {}) {
-  const { color = '#fff', lw = 0.02, length = 0.6 } = opts;
-  const tip = from + length;
-  const back = tip - length * 0.38;
-  const half = length * 0.28;
-  line(ctx, from, 0, tip, 0, { stroke: color, lw });
-  line(ctx, tip, 0, back, half, { stroke: color, lw });
-  line(ctx, tip, 0, back, -half, { stroke: color, lw });
+export function drawEyes(ctx, body, opts = {}) {
+  const { color = '#fff', pupil = '#000', scale = 1 } = opts;
+  const wanted = bodyNoseRadius(body) * EYE_RADIUS * scale;
+  if (!(wanted > 0)) return;
+
+  for (const side of [1, -1]) {
+    const [px, py] = bodyPerimeterPoint(body, side * EYE_BEARING);
+    const x = px * EYE_INSET;
+    const y = py * EYE_INSET;
+    // Розмір обмежений фактичним просвітом до найближчого краю, а не
+    // «радіусом вперед»: у сплюснутого тіла бічна стінка значно ближча, і
+    // око, розраховане від довжини, вилізло б за неї
+    const radius = Math.min(wanted, innerClearance(body, x, y) * EYE_CLEARANCE);
+    if (!(radius > 0)) continue;
+    circle(ctx, x, y, radius, { fill: color });
+    // Зіниця зміщена вперед — погляд спрямований туди ж, куди пливе істота
+    circle(ctx, x + radius * 0.3, y, radius * PUPIL_RATIO, { fill: pupil });
+  }
+}
+
+/** Відстань від внутрішньої точки до найближчого краю тіла. */
+export function innerClearance(body, x, y) {
+  if (!body) return 0;
+  if (body.shape === 'circle') return (body.radius ?? 0) - Math.hypot(x, y);
+
+  const verts = body.vertices ?? [];
+  if (verts.length < 3) return 0;
+  let best = Infinity;
+  for (let i = 0; i < verts.length; i++) {
+    const [ax, ay] = verts[i];
+    const [bx, by] = verts[(i + 1) % verts.length];
+    const ex = bx - ax, ey = by - ay;
+    const len = Math.hypot(ex, ey);
+    if (len < 1e-12) continue;
+    // Тіло опукле, тож достатньо відстані до прямої, що містить сторону
+    best = Math.min(best, Math.abs(ex * (y - ay) - ey * (x - ax)) / len);
+  }
+  return Number.isFinite(best) ? best : 0;
 }
 
 /** Пряма кінематика у нейтральній позі (усі кути суглобів = 0). */
@@ -281,8 +321,10 @@ export function drawCreatureGhost(ctx, view, creature, pose, colors, opts = {}) 
     }
   }
 
-  if (withArrow) {
-    headingArrow(ctx, bodyNoseRadius(body), { color: hexAlpha(color, alpha), lw });
+  if (withArrow && body) {
+    drawEyes(ctx, body, {
+      color: hexAlpha(colors.text, alpha), pupil: hexAlpha(colors.bg, alpha),
+    });
   }
   ctx.restore();
 }

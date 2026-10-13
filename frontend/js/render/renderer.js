@@ -8,7 +8,7 @@
 
 import {
   makeView, withWorld, grid, polygon, circle, line, capsule, aura, screenText, hexAlpha,
-  worldVerts, drawCreatureGhost, creatureReach, bodyNoseRadius, headingArrow,
+  worldVerts, drawCreatureGhost, creatureReach, drawEyes,
 } from './shapes.js';
 
 /** Статичний вміст сцени: межі світу, перешкоди, маршрути, точки появи. */
@@ -177,7 +177,11 @@ function drawLiveFrame(ctx, view, scene, frame, colors) {
   } else {
     circle(ctx, 0, 0, body.radius ?? 0.8, { fill: hexAlpha(tint, 0.28), stroke: tint, lw });
   }
-  headingArrow(ctx, bodyNoseRadius(body), { color: hexAlpha(tint, 0.9), lw });
+  // Очі показують, куди істота обернена (жива — білі, мертва — приглушені)
+  drawEyes(ctx, body, {
+    color: alive ? colors.text : hexAlpha(colors.text, 0.5),
+    pupil: colors.bg,
+  });
   ctx.restore();
 
   return labels;
