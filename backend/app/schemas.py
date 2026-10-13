@@ -334,7 +334,7 @@ class EditorStateResponse(BaseModel):
 
 
 class PresetMeta(BaseModel):
-    """Короткий опис іменованого варіанта сцени для списку в UI."""
+    """Опис сцени для списку в UI; `environment` потрібен для мініатюри."""
 
     name: str
     saved_at: str | None = None
@@ -344,6 +344,7 @@ class PresetMeta(BaseModel):
     obstacles: int = 0
     waypoints: int = 0
     bytes: int = 0
+    environment: dict | None = None
 
 
 class PresetList(BaseModel):

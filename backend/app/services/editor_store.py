@@ -123,8 +123,13 @@ def _preset_meta(name: str, data: dict, path: Path) -> dict:
     env = data.get("environment") if isinstance(data.get("environment"), dict) else {}
     limbs = creature.get("limbs") if isinstance(creature.get("limbs"), list) else []
     obstacles = env.get("obstacles") if isinstance(env.get("obstacles"), list) else []
-    predator = env.get("predator") if isinstance(env.get("predator"), dict) else {}
-    waypoints = predator.get("waypoints") if isinstance(predator.get("waypoints"), list) else []
+    predators = env.get("predators") if isinstance(env.get("predators"), list) else []
+    legacy = env.get("predator") if isinstance(env.get("predator"), dict) else {}
+    waypoints = [
+        wp for p in ([*predators, legacy] if legacy else predators)
+        if isinstance(p, dict)
+        for wp in (p.get("waypoints") or [])
+    ]
     segments = sum(
         len(limb.get("segments", [])) for limb in limbs if isinstance(limb, dict)
     )
@@ -137,6 +142,9 @@ def _preset_meta(name: str, data: dict, path: Path) -> dict:
         "obstacles": len(obstacles),
         "waypoints": len(waypoints),
         "bytes": path.stat().st_size,
+        # Сцена віддається цілком: вона мала, а фронтенду потрібна для
+        # мініатюри у списку вибору (інакше там були б самі назви)
+        "environment": env or None,
     }
 
 

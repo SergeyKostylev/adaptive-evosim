@@ -319,12 +319,12 @@
         <h3>Складові експерименту</h3>
         <p class="small muted">Редактор готує сутності окремо; тут вони поєднуються
           і «запікаються» копіями в конфіг прогону (§11).</p>
-        <div class="row"><label for="sim-creature">Істота</label>
-          <select id="sim-creature"></select></div>
-        <div class="row"><label for="sim-scene">Сцена</label>
-          <select id="sim-scene"></select></div>
-        <div class="row"><label for="sim-predator" title="застосовується до маршрутів без власного хижака">
-          Хижак</label><select id="sim-predator"></select></div>
+        <div class="row"><label>Істота</label>
+          <div class="picker" id="pick-creature"></div></div>
+        <div class="row"><label>Сцена</label>
+          <div class="picker" id="pick-scene"></div></div>
+        <div class="row"><label title="застосовується до маршрутів без власного хижака">Хижак</label>
+          <div class="picker" id="pick-predator"></div></div>
         <div class="btns"><button id="sim-refresh">Оновити списки</button></div>
         <p class="small mono" id="sim-summary" style="margin:8px 0 0">—</p>
       </div>

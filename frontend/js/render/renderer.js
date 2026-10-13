@@ -89,6 +89,52 @@ export function drawExperiment(ctx, view, config, colors, opts = {}) {
   return labels;
 }
 
+/** Мініатюра сцени для списків вибору: світ, перешкоди, маршрути, старти. */
+export function renderSceneThumb(canvas, env, colors, { size = 34 } = {}) {
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = Math.round(size * dpr);
+  canvas.height = Math.round(size * dpr);
+  canvas.style.width = `${size}px`;
+  canvas.style.height = `${size}px`;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, size, size);
+  if (!env) return;
+
+  const world = env.world ?? { width: 60, height: 40 };
+  const scale = Math.min(size / (world.width + 2), size / (world.height + 2));
+  ctx.translate(size / 2, size / 2);
+  ctx.scale(scale, -scale);
+  const lw = 1.2 / scale;
+
+  polygon(ctx, [
+    [-world.width / 2, -world.height / 2], [world.width / 2, -world.height / 2],
+    [world.width / 2, world.height / 2], [-world.width / 2, world.height / 2],
+  ], { stroke: hexAlpha(colors.muted, 0.8), fill: hexAlpha(colors.panel, 0.5), lw });
+
+  for (const o of env.obstacles ?? []) {
+    const style = { fill: hexAlpha(colors.warn, 0.75), stroke: null };
+    if (o.type === 'static_circle') circle(ctx, o.position[0], o.position[1], o.radius, style);
+    else if (o.type === 'static_polygon') polygon(ctx, worldVerts(o.vertices, o.position, o.angle), style);
+    else if (o.type === 'moving_polygon') polygon(ctx, worldVerts(o.vertices, o.p1, 0), style);
+  }
+  for (const route of env.predators ?? []) {
+    const wps = route.waypoints ?? [];
+    if (wps.length >= 2) {
+      polygon(ctx, wps, { stroke: hexAlpha(colors.danger, 0.8), lw, close: true });
+    }
+    if (wps.length) {
+      circle(ctx, wps[0][0], wps[0][1], Math.max(route.r_body ?? 0.8, 1.2),
+        { fill: hexAlpha(colors.danger, 0.9) });
+    }
+  }
+  for (const sp of env.spawns ?? []) {
+    circle(ctx, sp.position[0], sp.position[1], 1.4, { fill: hexAlpha(colors.accent, 0.95) });
+  }
+  if (!(env.spawns ?? []).length) circle(ctx, 0, 0, 1.4, { fill: hexAlpha(colors.accent, 0.6) });
+}
+
 /**
  * Перегляд сцени на окремому канвасі: власна камера (пан/зум), автопідгонка
  * під світ, перемалювання за `draw(config)`.

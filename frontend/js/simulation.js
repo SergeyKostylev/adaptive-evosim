@@ -12,24 +12,91 @@ import {
   validateCreature,
 } from './api.js';
 import { state, clone, buildExperimentConfig, migrateEnvironment } from './state.js';
-import { createPreview } from './render/renderer.js';
+import { createPreview, renderSceneThumb } from './render/renderer.js';
 import { themeColors } from './render/shapes.js';
+import { renderCreatureThumb } from './editor/creature_editor.js';
+import { renderPredatorThumb } from './editor/predator_editor.js';
 
 const $ = (s) => document.querySelector(s);
 const CURRENT = '__current__';
 const FROM_SCENE = '__scene__';
 
 let preview = null;
+let colors = null;
+const pickers = {};
+
+/**
+ * Випадаючий список із мініатюрами: нативний <select> уміє лише текст, а тут
+ * важливо бачити саму форму — істоту, розкладку сцени, розміри хижака.
+ */
+function createPicker(root, { onPick }) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  const thumb = document.createElement('canvas');
+  thumb.className = 'thumb';
+  const name = document.createElement('span');
+  name.className = 'name';
+  const chev = document.createElement('span');
+  chev.className = 'chev';
+  chev.textContent = '▾';
+  button.append(thumb, name, chev);
+
+  const menu = document.createElement('ul');
+  menu.className = 'menu list';
+  menu.hidden = true;
+  root.append(button, menu);
+
+  let items = [];
+  let value = null;
+
+  const close = () => { menu.hidden = true; };
+  button.addEventListener('click', (e) => { e.stopPropagation(); menu.hidden = !menu.hidden; });
+  document.addEventListener('click', (e) => { if (!root.contains(e.target)) close(); });
+  window.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+
+  function renderButton() {
+    const item = items.find((i) => i.value === value) ?? items[0];
+    name.textContent = item?.label ?? '—';
+    item?.thumb?.(thumb, 26);
+  }
+
+  return {
+    get value() { return value; },
+    set(next) {
+      value = items.some((i) => i.value === next) ? next : items[0]?.value ?? null;
+      renderButton();
+    },
+    fill(nextItems) {
+      items = nextItems;
+      if (!items.some((i) => i.value === value)) value = items[0]?.value ?? null;
+      menu.innerHTML = '';
+      for (const item of items) {
+        const li = document.createElement('li');
+        li.className = item.value === value ? 'sel' : '';
+        const c = document.createElement('canvas');
+        c.className = 'thumb';
+        li.appendChild(c);
+        item.thumb?.(c, 34);
+        const text = document.createElement('span');
+        text.className = 'grow';
+        text.innerHTML = `<span>${item.label}</span>`
+          + (item.meta ? `<span class="meta">${item.meta}</span>` : '');
+        li.appendChild(text);
+        li.addEventListener('click', () => {
+          value = item.value;
+          renderButton();
+          close();
+          onPick?.(value);
+        });
+        menu.appendChild(li);
+      }
+      renderButton();
+    },
+  };
+}
 
 /** Вибране користувачем (резолвиться ліниво, кешується). */
 const picked = { creature: null, environment: null, predator: null };
-
-function option(value, label) {
-  const o = document.createElement('option');
-  o.value = value;
-  o.textContent = label;
-  return o;
-}
 
 async function fillSelects() {
   const [creatures, predators, presets] = await Promise.all([
@@ -38,42 +105,55 @@ async function fillSelects() {
     listPresets().catch(() => ({ presets: [] })),
   ]);
 
-  const cs = $('#sim-creature');
-  const keepC = cs.value;
-  cs.innerHTML = '';
-  cs.appendChild(option(CURRENT, 'поточна з редактора'));
-  for (const m of creatures.creatures) {
-    cs.appendChild(option(m.name, `${m.name} · ${m.limbs} кінц.`));
-  }
-  if ([...cs.options].some((o) => o.value === keepC)) cs.value = keepC;
+  const creatureThumb = (c) => (canvas, size) => renderCreatureThumb(canvas, c, colors, { size });
+  const sceneThumb = (env) => (canvas, size) => renderSceneThumb(canvas, env, colors, { size });
+  const predThumb = (p) => (canvas, size) => renderPredatorThumb(canvas, p, colors, { size });
 
-  const ss = $('#sim-scene');
-  const keepS = ss.value;
-  ss.innerHTML = '';
-  ss.appendChild(option(CURRENT, 'поточна з редактора'));
-  for (const m of presets.presets) {
-    ss.appendChild(option(m.name, `${m.name} · ${m.obstacles} переш.`));
-  }
-  if ([...ss.options].some((o) => o.value === keepS)) ss.value = keepS;
+  const segments = (c) => (c?.limbs ?? []).reduce((a, l) => a + l.segments.length, 0);
+  pickers.creature.fill([
+    { value: CURRENT, label: `${state.creature.name} (з редактора)`,
+      meta: `${state.creature.limbs.length} кінц. · ${segments(state.creature)} сегм.`,
+      thumb: creatureThumb(state.creature) },
+    ...creatures.creatures.map((m) => ({
+      value: m.name, label: m.name,
+      meta: `${m.limbs} кінц. · ${m.segments} сегм.`,
+      thumb: creatureThumb(m.creature),
+    })),
+  ]);
 
-  const ps = $('#sim-predator');
-  const keepP = ps.value;
-  ps.innerHTML = '';
-  ps.appendChild(option(FROM_SCENE, 'як задано у сцені'));
-  ps.appendChild(option(CURRENT, 'поточний з редактора'));
-  for (const m of predators.predators) {
-    ps.appendChild(option(m.name, `${m.name} · r ${m.r_body} · аура ${m.r_aura}`));
-  }
-  if ([...ps.options].some((o) => o.value === keepP)) ps.value = keepP;
+  pickers.scene.fill([
+    { value: CURRENT, label: 'сцена з редактора',
+      meta: `${state.environment.obstacles.length} переш. · `
+        + `${state.environment.predators.length} маршр. · ${state.environment.spawns.length} стартів`,
+      thumb: sceneThumb(state.environment) },
+    ...presets.presets.map((m) => ({
+      value: m.name, label: m.name,
+      meta: `${m.obstacles} переш. · ${m.waypoints} точок маршрутів`,
+      thumb: sceneThumb(m.environment),
+    })),
+  ]);
+
+  pickers.predator.fill([
+    { value: FROM_SCENE, label: 'як задано у сцені',
+      meta: 'параметри беруться з кожного маршруту', thumb: null },
+    { value: CURRENT, label: `${state.predatorName} (з редактора)`,
+      meta: `r ${state.predator.r_body} · аура ${state.predator.r_aura}`,
+      thumb: predThumb(state.predator) },
+    ...predators.predators.map((m) => ({
+      value: m.name, label: m.name,
+      meta: `r ${m.r_body} · аура ${m.r_aura} · погоня ${m.v_chase}`,
+      thumb: predThumb(m.predator),
+    })),
+  ]);
 }
 
 async function resolve() {
-  const cName = $('#sim-creature').value;
+  const cName = pickers.creature.value;
   picked.creature = cName === CURRENT || !cName
     ? clone(state.creature)
     : (await loadCreature(cName).catch(() => null))?.creature ?? clone(state.creature);
 
-  const sName = $('#sim-scene').value;
+  const sName = pickers.scene.value;
   if (sName === CURRENT || !sName) {
     picked.environment = clone(state.environment);
   } else {
@@ -82,7 +162,7 @@ async function resolve() {
       ? migrateEnvironment(res.state.environment) : clone(state.environment);
   }
 
-  const pName = $('#sim-predator').value;
+  const pName = pickers.predator.value;
   if (pName === FROM_SCENE || !pName) picked.predator = null;
   else if (pName === CURRENT) picked.predator = clone(state.predator);
   else picked.predator = (await loadPredator(pName).catch(() => null))?.predator ?? null;
@@ -104,8 +184,8 @@ export function assembleExperiment() {
     return false;
   }).map((route) => {
     if (!picked.predator || route.preset) return route;
-    return { ...route, ...clone(picked.predator), preset: $('#sim-predator').value === CURRENT
-      ? null : $('#sim-predator').value };
+    const chosen = pickers.predator.value;
+    return { ...route, ...clone(picked.predator), preset: chosen === CURRENT ? null : chosen };
   });
 
   return {
@@ -183,7 +263,11 @@ export async function refreshExperimentPreview() {
 }
 
 export async function initSimulationPicker() {
-  preview = createPreview($('#sim-canvas'), themeColors());
+  colors = themeColors();
+  preview = createPreview($('#sim-canvas'), colors);
+  for (const kind of ['creature', 'scene', 'predator']) {
+    pickers[kind] = createPicker($(`#pick-${kind}`), { onPick: refreshExperimentPreview });
+  }
   $('#sim-fit').addEventListener('click', () => preview.fit());
   $('#exp-copy').addEventListener('click', async () => {
     try {
@@ -194,14 +278,14 @@ export async function initSimulationPicker() {
       $('#exp-copy').textContent = 'Не вдалося';
     }
   });
-  // Перемальовуємо при поверненні на вкладку: канвас міг бути прихований
-  window.addEventListener('tabchange', (e) => {
-    if (e.detail === 'simulation') refreshExperimentPreview();
+  // При поверненні на вкладку списки могли застаріти (щойно збережена істота,
+  // новий хижак), а канвас був прихований — оновлюємо і те, і те
+  window.addEventListener('tabchange', async (e) => {
+    if (e.detail !== 'simulation') return;
+    await fillSelects();
+    await refreshExperimentPreview();
   });
   await fillSelects();
-  for (const sel of ['#sim-creature', '#sim-scene', '#sim-predator']) {
-    $(sel).addEventListener('change', refreshExperimentPreview);
-  }
   $('#sim-refresh').addEventListener('click', async () => {
     await fillSelects();
     await refreshExperimentPreview();
