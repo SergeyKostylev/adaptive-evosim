@@ -13,7 +13,7 @@ import {
 } from '../api.js';
 import {
   clone, stateChanged, saveAsPreset, migrateEnvironment, defaultState, DEFAULTS,
-  applyExperimentForm, normalizeCreature, invalidateCreatureCache,
+  applyExperimentForm, invalidateCreatureCache,
   presetCreatures, localTime,
 } from '../state.js';
 
@@ -423,81 +423,6 @@ export function initEditor(state) {
     }
   }
 
-  function download(filename, data) {
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = filename;
-    a.click();
-    // Відкликати одразу не можна: Firefox/Safari можуть не встигнути
-    // прочитати blob — файл збережеться порожнім або не збережеться взагалі
-    setTimeout(() => URL.revokeObjectURL(a.href), 0);
-  }
-
-  let loadTarget = null;
-  const fileInput = $('#file-input');
-
-  fileInput.addEventListener('change', async () => {
-    const file = fileInput.files?.[0];
-    fileInput.value = '';
-    if (!file) return;
-    let data;
-    try {
-      data = JSON.parse(await file.text());
-    } catch (e) {
-      message(`Файл не є валідним JSON: ${e.message}`, 'err');
-      return;
-    }
-
-    if (loadTarget === 'predator') {
-      const params = data?.predator ?? data;
-      if (!params || typeof params !== 'object' || params.r_aura === undefined) {
-        message('Очікувався файл хижака (поле predator або самі параметри)', 'err');
-        return;
-      }
-      applyPredatorParams(api, data?.name ?? api.state.predatorName, params);
-      refresh();
-      message('Хижака завантажено з файлу', 'ok');
-      return;
-    }
-
-    if (loadTarget === 'creature') {
-      let imported;
-      try {
-        imported = normalizeCreature(data);
-      } catch (err) {
-        message(`Очікувався CreatureConfig: ${err.message}`, 'err');
-        return;
-      }
-      state.creature = imported;
-      clearLimbSelection(api);
-      if (imported.limbs.length) {
-        api.sel.limb = 0;
-        api.sel.limbs.add(0);
-      }
-      api.sel.seg = 0;
-      api.draft.body = null;
-      refresh();
-      const res = await doValidate({ quiet: true });
-      message(res.valid
-        ? `Істоту завантажено: ${data.limbs.length} кінцівок, genome_size=${res.genome_size}`
-        : `Істоту завантажено, але є помилки:\n• ${res.errors.join('\n• ')}`,
-        res.valid ? 'ok' : 'err');
-    } else {
-      if (!data?.world || !Array.isArray(data?.obstacles)) {
-        message('Очікувався EnvironmentConfig (world, fluid, predators, obstacles)', 'err');
-        return;
-      }
-      state.environment = migrateEnvironment(data);
-      resetSceneSelection();
-      refresh();
-      resetCamera();
-      const env = state.environment;
-      message(`Сцену завантажено: ${env.obstacles.length} перешкод, `
-        + `${env.predators.length} хижаків, ${env.spawns.length} істот`, 'ok');
-    }
-  });
-
   $('#btn-validate').addEventListener('click', () => doValidate());
 
   /**
@@ -856,27 +781,6 @@ export function initEditor(state) {
 
   $('#pred-save-lib').addEventListener('click', () =>
     saveCurrentEntity('predators', api.state.predatorName?.trim()));
-
-  $('#lib-export').addEventListener('click', (e) => {
-    e.stopPropagation();
-    if (libraryKind() === 'presets') {
-      download(`${state.sceneName || 'scene'}.environment.json`, state.environment);
-      message('EnvironmentConfig збережено у файл', 'ok');
-      return;
-    }
-    if (libraryKind() === 'predators') {
-      download(`${api.state.predatorName || 'predator'}.predator.json`,
-        { predator: predatorParams(api.state.predator) });
-    } else {
-      download(`${state.creature.name || 'creature'}.creature.json`, state.creature);
-    }
-    message('Збережено у файл', 'ok');
-  });
-  $('#lib-import').addEventListener('click', (e) => {
-    e.stopPropagation();
-    loadTarget = { predators: 'predator', presets: 'scene', creatures: 'creature' }[libraryKind()];
-    fileInput.click();
-  });
 
   /** Завантажує збережену сцену в редактор. */
   async function applyPreset(name) {

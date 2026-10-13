@@ -110,45 +110,6 @@ export function invalidateCreatureCache() {
   creatureRequests.clear();
 }
 
-/**
- * Доповнює морфологію з файлу дефолтами (density, rest_angle), яких Pydantic
- * підставляє на сервері: без цього панель падає на `body.density.toFixed()`.
- */
-export function normalizeCreature(raw) {
-  if (!raw || typeof raw !== 'object') throw new Error('очікувався об\'єкт CreatureConfig');
-  const body = raw.body;
-  if (!body || typeof body !== 'object') throw new Error('немає поля body');
-  if (!Array.isArray(raw.limbs) || !raw.limbs.length) throw new Error('немає жодної кінцівки');
-
-  const limbs = raw.limbs.map((limb, i) => {
-    if (!limb || !Array.isArray(limb.segments) || !limb.segments.length) {
-      throw new Error(`кінцівка ${i} без сегментів`);
-    }
-    return {
-      ...limb,
-      attach_angle: Number(limb.attach_angle) || 0,
-      rest_angle: Number(limb.rest_angle) || 0,
-      segments: limb.segments.map((seg) => ({
-        ...DEFAULTS.segment,
-        ...seg,
-        joint: { ...DEFAULTS.segment.joint, ...(seg?.joint ?? {}) },
-      })),
-    };
-  });
-
-  return {
-    ...raw,
-    name: raw.name || 'creature',
-    body: {
-      shape: body.shape === 'polygon' ? 'polygon' : 'circle',
-      radius: body.shape === 'polygon' ? null : (body.radius ?? 0.8),
-      vertices: body.shape === 'polygon' ? (body.vertices ?? null) : null,
-      density: body.density ?? 1.0,
-    },
-    limbs,
-  };
-}
-
 /** Зберігає поточну сцену як іменований варіант. */
 export async function saveAsPreset(name) {
   const meta = await savePreset(name, editorSnapshot());

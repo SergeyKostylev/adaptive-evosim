@@ -264,7 +264,6 @@
       <!-- Повідомлення редактора (валідація, збереження, завантаження).
            Робочий стан зберігається автоматично — окремої панелі для цього
            немає: точки збереження — кнопки в панелях самих сутностей. -->
-      <input type="file" id="file-input" accept="application/json" hidden>
       <div id="validate-msg" class="small" style="margin-bottom:var(--gap)"></div>
 
       <div class="group">
@@ -296,10 +295,6 @@
             <button id="lib-save" class="primary" style="flex:none">Зберегти</button>
           </div>
           <ul class="list" id="lib-list"></ul>
-          <div class="btns">
-            <button id="lib-export">Експорт JSON</button>
-            <button id="lib-import">Імпорт JSON</button>
-          </div>
         </div>
       </div>
       <div class="statusbar">
