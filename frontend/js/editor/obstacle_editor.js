@@ -9,7 +9,9 @@
  */
 
 import { DEFAULTS } from '../state.js';
-import { polygon, circle, line, hexAlpha } from '../render/shapes.js';
+import { polygon, circle, line, hexAlpha, worldVerts } from '../render/shapes.js';
+
+export { worldVerts };
 import { centroid, isConvex } from './creature_editor.js';
 
 const $ = (s) => document.querySelector(s);
@@ -163,14 +165,6 @@ export function drawObstacles(ctx, view, api, colors) {
     }
     for (const v of d.verts) circle(ctx, v[0], v[1], view.px(3), { fill: c });
   }
-}
-
-export function worldVerts(vertices, position, angle) {
-  const ca = Math.cos(angle ?? 0), sa = Math.sin(angle ?? 0);
-  return vertices.map(([x, y]) => [
-    position[0] + x * ca - y * sa,
-    position[1] + x * sa + y * ca,
-  ]);
 }
 
 // --- Панель ----------------------------------------------------------------

@@ -362,8 +362,32 @@
         <p class="small warn" style="margin-bottom:0">Запуск навчання з'являється на етапі 3 (генетичний алгоритм).</p>
       </div>
     </aside>
-    <div class="canvas-wrap" style="display:flex; flex-direction:column; padding:12px; gap:10px; overflow:auto">
-      <div class="group" style="margin:0">
+    <div class="canvas-wrap">
+      <canvas id="sim-canvas"></canvas>
+
+      <div class="canvas-top" id="sim-hud">
+        <div class="hud-row">
+          <span class="mono" id="hud-state">зупинено</span>
+          <span class="muted small" id="hud-run">прогону ще не було</span>
+          <span class="spacer"></span>
+          <button id="sim-fit" title="Вписати світ у вікно">Вписати</button>
+        </div>
+        <div class="hud-row small muted" id="hud-legend">
+          <span style="color:var(--accent)">■ істота на точках появи</span>
+          <span style="color:var(--danger)">■ хижак, аура, маршрут</span>
+          <span style="color:var(--warn)">■ перешкоди</span>
+        </div>
+      </div>
+
+      <div class="statusbar">
+        <span class="hint" id="sim-summary">—</span>
+        <span class="spacer"></span>
+        <span id="sim-warn" class="warn"></span>
+      </div>
+    </div>
+
+    <aside class="sidebar" style="width:360px; border-left:1px solid var(--border); border-right:0">
+      <div class="group">
         <h3>Стан симуляції</h3>
         <div class="kv">
           <span>стан</span><span id="st-state">—</span>
@@ -372,11 +396,30 @@
           <span>режим</span><span id="st-mode">—</span>
         </div>
       </div>
-      <div class="group" style="margin:0; flex:1; min-height:0; display:flex; flex-direction:column">
-        <h3>Конфігурація експерименту (тіло запиту POST /api/simulation/start)</h3>
-        <pre class="out" id="exp-json" style="flex:1; max-height:none">—</pre>
+      <div class="group">
+        <h3>Що буде еволюціонувати</h3>
+        <div class="kv">
+          <span>суглобів</span><span id="sim-joints">—</span>
+          <span>входів мережі</span><span id="sim-nin">—</span>
+          <span>розмір геному</span><span id="sim-genome">—</span>
+          <span>сим-секунд / покоління</span><span id="sim-cost">—</span>
+        </div>
+        <p class="small muted" style="margin:8px 0 0">Оцінка часу з'явиться після
+          етапу 2, коли буде відома реальна швидкість фізики.</p>
       </div>
-    </div>
+      <div class="group" style="flex:1; min-height:0">
+        <h3>Конфігурація прогону</h3>
+        <details id="exp-details">
+          <summary class="small muted" style="cursor:pointer; margin-bottom:6px">
+            Показати JSON (тіло запиту POST /api/simulation/start)
+          </summary>
+          <div class="btns" style="margin-bottom:6px">
+            <button id="exp-copy">Копіювати</button>
+          </div>
+          <pre class="out" id="exp-json">—</pre>
+        </details>
+      </div>
+    </aside>
   </section>
 
   <!-- ================= АНАЛІТИКА ================= -->

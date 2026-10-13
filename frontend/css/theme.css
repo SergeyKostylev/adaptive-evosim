@@ -176,3 +176,16 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 8px 0; }
 .dropdown ul.list li { gap: 8px; }
 .dropdown ul.list li .meta { color: var(--muted); font-size: 11px; }
 .dropdown ul.list li .grow { display: flex; flex-direction: column; line-height: 1.25; }
+
+/* --- HUD симуляції --- */
+#sim-hud { width: min(560px, calc(100% - 24px)); display: flex; flex-direction: column; gap: 6px; }
+.hud-row {
+  display: flex; align-items: center; gap: 12px;
+  background: rgba(17, 21, 31, .92); border: 1px solid var(--border);
+  border-radius: var(--r); padding: 6px 10px; backdrop-filter: blur(6px);
+}
+.hud-row .spacer { flex: 1; }
+.hud-row button { padding: 2px 10px; }
+#sim-canvas { cursor: grab; }
+#sim-canvas:active { cursor: grabbing; }
+details summary::-webkit-details-marker { color: var(--muted); }

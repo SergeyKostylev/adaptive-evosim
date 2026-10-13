@@ -172,3 +172,119 @@ export function grid(ctx, view, cam, cssW, cssH, colors) {
   line(ctx, tl.x, 0, br.x, 0, { stroke: hexAlpha(colors.muted, 0.5), lw: view.px(1) });
   line(ctx, 0, br.y, 0, tl.y, { stroke: hexAlpha(colors.muted, 0.5), lw: view.px(1) });
 }
+
+// ---------------------------------------------------------------------------
+// Геометрія істоти. Живе тут, а не в редакторі: тими самими функціями
+// малюється і конструктор, і перегляд сцени в симуляції, і (з етапу 2) кадри
+// живого рендера — жоден із них не має залежати від модулів редактора.
+// ---------------------------------------------------------------------------
+
+/** Точка кріплення кінцівки на периметрі тіла під кутом `angle`. */
+export function bodyPerimeterPoint(body, angle) {
+  const dx = Math.cos(angle), dy = Math.sin(angle);
+  if (body.shape === 'circle') return [body.radius * dx, body.radius * dy];
+
+  // Промінь із центра до перетину зі сторонами полігона
+  const verts = body.vertices ?? [];
+  let best = 0;
+  for (let i = 0; i < verts.length; i++) {
+    const [x1, y1] = verts[i];
+    const [x2, y2] = verts[(i + 1) % verts.length];
+    const ex = x2 - x1, ey = y2 - y1;
+    const den = dx * ey - dy * ex;
+    if (Math.abs(den) < 1e-12) continue;
+    const t = (x1 * ey - y1 * ex) / den;         // відстань уздовж променя
+    const u = (dx * y1 - dy * x1) / -den;        // параметр на стороні [0,1]
+    if (t > 0 && u >= -1e-9 && u <= 1 + 1e-9) best = Math.max(best, t);
+  }
+  return [best * dx, best * dy];
+}
+
+/** Пряма кінематика у нейтральній позі (усі кути суглобів = 0). */
+export function segmentPoses(creature) {
+  const out = [];
+  creature.limbs.forEach((limb, li) => {
+    const [ax, ay] = bodyPerimeterPoint(creature.body, limb.attach_angle);
+    const dir = limb.attach_angle + limb.rest_angle;
+    const dx = Math.cos(dir), dy = Math.sin(dir);
+    let acc = 0;
+    limb.segments.forEach((seg, si) => {
+      out.push({
+        limb: li, idx: si, seg,
+        jointX: ax + dx * acc, jointY: ay + dy * acc,
+        x: ax + dx * (acc + seg.length / 2),
+        y: ay + dy * (acc + seg.length / 2),
+        angle: dir, length: seg.length, width: seg.width,
+      });
+      acc += seg.length;
+    });
+  });
+  return out;
+}
+
+/**
+ * «Привид» довільної істоти у заданій позі — для розстановки у сцені.
+ * Якщо морфологія невідома (варіант ще не підвантажено), малюється
+ * пунктирний плейсхолдер.
+ */
+export function drawCreatureGhost(ctx, view, creature, pose, colors, opts = {}) {
+  const withArrow = opts.arrow !== false;
+  const { x = 0, y = 0, angle = 0 } = pose;
+  const color = opts.color ?? colors.accent;
+  const alpha = opts.alpha ?? 0.55;
+  const lw = view.px(opts.selected ? 2.2 : 1.4);
+
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+
+  const body = creature?.body;
+  if (!body) {
+    circle(ctx, 0, 0, 0.8, { stroke: hexAlpha(color, alpha), lw, dash: [1, 1] });
+  } else {
+    for (const s of segmentPoses(creature)) {
+      capsule(ctx, s.x, s.y, s.angle, s.length, s.width, {
+        fill: hexAlpha(color, alpha * 0.3), stroke: hexAlpha(color, alpha), lw,
+      });
+    }
+    if (body.shape === 'circle' && body.radius) {
+      circle(ctx, 0, 0, body.radius, { fill: hexAlpha(color, alpha * 0.25), stroke: hexAlpha(color, alpha), lw });
+    } else if (body.vertices?.length >= 3) {
+      polygon(ctx, body.vertices, { fill: hexAlpha(color, alpha * 0.25), stroke: hexAlpha(color, alpha), lw });
+    }
+  }
+
+  // Напрямок «вперед» (локальна вісь X)
+  if (withArrow) {
+    const r = (body?.radius ?? 0.8) + 0.5;
+    line(ctx, 0, 0, r, 0, { stroke: hexAlpha(color, alpha), lw });
+    line(ctx, r, 0, r - 0.25, 0.18, { stroke: hexAlpha(color, alpha), lw });
+    line(ctx, r, 0, r - 0.25, -0.18, { stroke: hexAlpha(color, alpha), lw });
+  }
+  ctx.restore();
+}
+
+/** Найбільша відстань від центра тіла — для вписування у мініатюру. */
+export function creatureReach(creature) {
+  const body = creature?.body;
+  let reach = body?.shape === 'polygon' && body.vertices?.length
+    ? Math.max(...body.vertices.map(([x, y]) => Math.hypot(x, y)))
+    : (body?.radius ?? 0.8);
+  for (const limb of creature?.limbs ?? []) {
+    const span = limb.segments.reduce((a, s) => a + s.length, 0);
+    const [ax, ay] = bodyPerimeterPoint(body, limb.attach_angle);
+    reach = Math.max(reach, Math.hypot(ax, ay) + span);
+  }
+  return reach;
+}
+
+
+/** Вершини перешкоди у світових координатах (позиція + поворот). */
+export function worldVerts(vertices, position, angle) {
+  const ca = Math.cos(angle ?? 0), sa = Math.sin(angle ?? 0);
+  return vertices.map(([x, y]) => [
+    position[0] + x * ca - y * sa,
+    position[1] + x * sa + y * ca,
+  ]);
+}
+

@@ -7,12 +7,19 @@
  * відтворюваним (§11), навіть якщо потім змінити істоту чи хижака в бібліотеці.
  */
 
-import { listCreatures, listPredators, listPresets, loadCreature, loadPredator, loadPreset } from './api.js';
-import { state, clone, DEFAULTS, buildExperimentConfig, migrateEnvironment } from './state.js';
+import {
+  listCreatures, listPredators, listPresets, loadCreature, loadPredator, loadPreset,
+  validateCreature,
+} from './api.js';
+import { state, clone, buildExperimentConfig, migrateEnvironment } from './state.js';
+import { createPreview } from './render/renderer.js';
+import { themeColors } from './render/shapes.js';
 
 const $ = (s) => document.querySelector(s);
 const CURRENT = '__current__';
 const FROM_SCENE = '__scene__';
+
+let preview = null;
 
 /** Вибране користувачем (резолвиться ліниво, кешується). */
 const picked = { creature: null, environment: null, predator: null };
@@ -109,27 +116,88 @@ export function assembleExperiment() {
 
 function summarize({ config, dropped }) {
   const env = config.environment;
-  const parts = [
-    `кінцівок: ${config.creature.limbs.length}`,
+  $('#sim-summary').textContent = [
+    `істота: ${config.creature.name ?? '—'} (${config.creature.limbs.length} кінц.)`,
     `перешкод: ${env.obstacles.length}`,
     `маршрутів: ${env.predators.length}`,
-    `точок появи: ${env.spawns.length || '— (центр світу)'}`,
-  ];
-  if (dropped.length) parts.push(`відкинуто незавершених маршрутів: ${dropped.length}`);
-  const el = $('#sim-summary');
-  el.className = dropped.length ? 'small mono warn' : 'small mono muted';
-  el.textContent = parts.join(' · ');
+    `стартів: ${env.spawns.length || '1 (центр світу)'}`,
+  ].join(' · ');
+  $('#sim-warn').textContent = warnings(config, dropped).join(' · ');
+}
+
+/**
+ * Перевірки, які видно оком на сцені, але не видно в JSON: старт усередині
+ * аури (істота гине на першій секунді), старт поза межами світу, порожня сцена.
+ */
+function warnings(config, dropped) {
+  const out = [];
+  if (dropped.length) out.push(`відкинуто незавершених маршрутів: ${dropped.length}`);
+
+  const env = config.environment;
+  const w = env.world.width / 2, h = env.world.height / 2;
+  const spawns = env.spawns.length ? env.spawns : [{ position: [0, 0] }];
+
+  for (const [i, sp] of spawns.entries()) {
+    const [x, y] = sp.position;
+    if (Math.abs(x) > w || Math.abs(y) > h) out.push(`старт ${i} поза межами світу`);
+    for (const route of env.predators) {
+      if (route.enabled === false || !route.waypoints?.length) continue;
+      const [px, py] = route.waypoints[0];
+      if (Math.hypot(x - px, y - py) < route.r_aura) out.push(`старт ${i} в аурі хижака`);
+    }
+  }
+  if (!env.predators.length) out.push('у сцені немає хижаків');
+  return out;
+}
+
+/** Похідні розміру мережі для вибраної істоти (§4.4, §5). */
+async function describeCreature(config) {
+  const set = (id, v) => { $(id).textContent = v; };
+  try {
+    const res = await validateCreature(config.creature);
+    if (!res.valid) {
+      set('#sim-joints', '—'); set('#sim-nin', '—');
+      set('#sim-genome', 'істота невалідна');
+      $('#sim-warn').textContent = `істота не пройде валідацію: ${res.errors[0]}`;
+      return;
+    }
+    set('#sim-joints', res.n_joints);
+    set('#sim-nin', res.n_in);
+    set('#sim-genome', res.genome_size);
+  } catch {
+    set('#sim-genome', 'сервер недоступний');
+  }
+  const ga = config.ga;
+  set('#sim-cost', `${(ga.population * ga.episodes_per_individual * ga.episode_seconds)
+    .toLocaleString('uk-UA')} с`);
 }
 
 export async function refreshExperimentPreview() {
   await resolve();
   const assembled = assembleExperiment();
   summarize(assembled);
+  preview?.draw(assembled.config);
+  describeCreature(assembled.config);
   const el = $('#exp-json');
   if (el) el.textContent = JSON.stringify(assembled.config, null, 2);
 }
 
 export async function initSimulationPicker() {
+  preview = createPreview($('#sim-canvas'), themeColors());
+  $('#sim-fit').addEventListener('click', () => preview.fit());
+  $('#exp-copy').addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText($('#exp-json').textContent);
+      $('#exp-copy').textContent = 'Скопійовано';
+      setTimeout(() => { $('#exp-copy').textContent = 'Копіювати'; }, 1500);
+    } catch {
+      $('#exp-copy').textContent = 'Не вдалося';
+    }
+  });
+  // Перемальовуємо при поверненні на вкладку: канвас міг бути прихований
+  window.addEventListener('tabchange', (e) => {
+    if (e.detail === 'simulation') refreshExperimentPreview();
+  });
   await fillSelects();
   for (const sel of ['#sim-creature', '#sim-scene', '#sim-predator']) {
     $(sel).addEventListener('change', refreshExperimentPreview);
