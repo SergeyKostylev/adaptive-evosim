@@ -412,6 +412,16 @@ class CreatureValidationResponse(BaseModel):
     creature_hash: str | None = None
 
 
+class PredatorValidationResponse(BaseModel):
+    """Відповідь `POST /api/predator/validate` (§9.4)."""
+
+    valid: bool
+    errors: list[str] = Field(default_factory=list)
+    #: Дотик до тіла теж ловить, тож ефективний радіус — max(r_catch, r_body) (§8.1)
+    r_catch_effective: float | None = None
+    aura_diameter: float | None = None
+
+
 class SimulationStatus(BaseModel):
     state: Literal["RUNNING", "PAUSED", "STOPPED"]
     run_id: str | None = None

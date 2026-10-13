@@ -93,3 +93,36 @@ def test_error_envelope_on_malformed_body(client):
     assert r.status_code == 422
     err = r.json()["error"]
     assert err["code"] == "VALIDATION_ERROR" and err["message"]
+
+
+def test_validate_predator_ok(client):
+    r = client.post("/api/predator/validate", json={"r_body": 1.2, "r_catch": 1.0,
+                                                    "r_aura": 6.0, "r_detect": 9.0})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["valid"] is True and body["errors"] == []
+    # дотик до тіла теж ловить (§8.1), тож ефективний радіус — більший із двох
+    assert body["r_catch_effective"] == 1.2
+    assert body["aura_diameter"] == 12.0
+
+
+def test_validate_predator_reports_broken_radii(client):
+    r = client.post("/api/predator/validate", json={"r_catch": 6.0, "r_aura": 5.0, "r_detect": 8.0})
+    body = r.json()
+    assert body["valid"] is False
+    assert any("r_catch" in e for e in body["errors"]), body["errors"]
+    assert body["r_catch_effective"] is None
+
+
+def test_validate_predator_rejects_waypoints(client):
+    """Маршрут — не частина сутності: §9.2 тримає його у сцені."""
+    body = client.post("/api/predator/validate",
+                       json={"waypoints": [[0, 0], [1, 1]]}).json()
+    assert body["valid"] is False
+    assert any("waypoints" in e for e in body["errors"]), body["errors"]
+
+
+def test_validate_predator_out_of_range(client):
+    body = client.post("/api/predator/validate", json={"r_body": 5.0}).json()
+    assert body["valid"] is False
+    assert any("r_body" in e for e in body["errors"]), body["errors"]

@@ -49,6 +49,10 @@ async function request(path, { method = 'GET', body } = {}) {
 export const validateCreature = (creature) =>
   request('/creature/validate', { method: 'POST', body: creature });
 
+/** POST /api/predator/validate → {valid, errors[], r_catch_effective, aura_diameter} */
+export const validatePredator = (predator) =>
+  request('/predator/validate', { method: 'POST', body: predator });
+
 /** GET /api/simulation/status → {state, run_id?, generation, population, elapsed_s, mode} */
 export const getStatus = () => request('/simulation/status');
 

@@ -214,15 +214,25 @@
           <input type="range" id="pred-rcatch" min="0.2" max="5" step="0.1" value="1"></div>
         <div class="row"><label for="pred-name" title="назва у бібліотеці">Назва</label>
           <input type="text" id="pred-name" maxlength="64" value="хижак-1"></div>
-        <p class="small" id="pred-warn" style="margin-bottom:0"></p>
+        <div class="btns">
+          <button id="pred-validate">Перевірити</button>
+          <button id="pred-save-lib" class="primary">Зберегти хижака</button>
+        </div>
+        <p class="small muted" style="margin:6px 0 0">Зберігається <b>лише хижак</b> — у свою бібліотеку.</p>
+        <p class="small mono" id="pred-dirty" style="margin:4px 0 0"></p>
+        <p class="small" id="pred-warn" style="margin:6px 0 0"></p>
       </div>
 
       <!-- Морфологія: перевірка (лише в режимі «Істота») -->
       <div class="group" data-panel="creature">
-        <h3>Перевірка морфології</h3>
+        <h3>Істота: перевірка та збереження</h3>
         <div class="btns">
-          <button id="btn-validate" class="primary">Перевірити</button>
+          <button id="btn-validate">Перевірити</button>
+          <button id="creature-save-lib" class="primary">Зберегти істоту</button>
         </div>
+        <p class="small muted" style="margin:6px 0 0">Зберігається <b>лише істота</b> — у свою
+          бібліотеку, під назвою з поля «Назва істоти». Хижак і сцена мають власні кнопки.</p>
+        <p class="small mono" id="creature-dirty" style="margin:4px 0 0"></p>
         <div class="kv" id="validate-kv" style="margin-top:8px">
           <span>суглобів</span><span id="v-joints">—</span>
           <span>входів мережі</span><span id="v-nin">—</span>
@@ -253,14 +263,15 @@
 
       <!-- Дії -->
       <div class="group">
-        <h3>Дії</h3>
+        <h3>Робочий стан</h3>
         <div class="btns">
           <button id="btn-save-project" title="experiments/editor/last_session.json">Зберегти в проєкт</button>
           <button id="btn-reset-project" class="danger">Скинути збережене</button>
         </div>
         <input type="file" id="file-input" accept="application/json" hidden>
-        <p class="small muted" style="margin:6px 0 0">Сцена зберігається автоматично й відкривається
-          при наступному завантаженні сторінки.</p>
+        <p class="small muted" style="margin:6px 0 0">Робочий стан (істота, хижак, сцена)
+          зберігається автоматично й відкривається при наступному завантаженні сторінки.
+          Для експерименту сутності треба зберегти окремо — у бібліотеки.</p>
         <div id="validate-msg" class="small" style="margin-top:6px"></div>
       </div>
 

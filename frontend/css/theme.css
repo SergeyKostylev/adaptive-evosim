@@ -165,7 +165,12 @@ hr { border: 0; border-top: 1px solid var(--border); margin: 8px 0; }
 }
 .canvas-top > button:hover { border-color: var(--accent); color: var(--text); }
 #lib-current-name { flex: 1; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#lib-current-thumb, .thumb { background: transparent; flex: none; }
+/* Розмір мініатюри задає CSS, а не атрибути канваса: інакше канвас без
+   намальованого вмісту розтягується до типових 300×150 і ламає рядок. */
+#lib-current-thumb, .thumb { background: transparent; flex: none; width: 30px; height: 30px; }
+.picker > button canvas.thumb { width: 26px; height: 26px; }
+.picker .menu li canvas.thumb, .dropdown ul.list li canvas.thumb { width: 34px; height: 34px; }
+canvas.thumb[hidden] { display: none; }
 #lib-count { border: 1px solid var(--border); border-radius: 999px; padding: 0 7px; }
 
 .dropdown {
@@ -209,3 +214,7 @@ details summary::-webkit-details-marker { color: var(--muted); }
 .picker .menu li.sel { border-color: var(--accent); }
 .picker .menu li .grow { display: flex; flex-direction: column; line-height: 1.25; }
 .picker .menu li .meta { color: var(--muted); font-size: 11px; }
+
+/* Позначка «є зміни, не збережені в бібліотеці» для сутності, що редагується */
+.dirty { color: var(--warn); }
+.saved { color: var(--muted); }

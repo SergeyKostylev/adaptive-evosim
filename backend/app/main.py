@@ -25,6 +25,8 @@ from .schemas import (
     EditorStateResponse,
     PredatorLibrary,
     PredatorMeta,
+    PredatorParams,
+    PredatorValidationResponse,
     PresetList,
     PresetMeta,
     SavedCreature,
@@ -109,6 +111,23 @@ async def validate_creature(payload: dict) -> CreatureValidationResponse:
     except ValidationError as exc:
         return CreatureValidationResponse(valid=False, errors=format_validation_errors(exc))
     return CreatureValidationResponse(valid=True, **creature.derived())
+
+
+@app.post("/api/predator/validate", response_model=PredatorValidationResponse)
+async def validate_predator(payload: dict) -> PredatorValidationResponse:
+    """Перевірка параметрів хижака (§8.1) — симетрично до істоти.
+
+    Правила діапазонів живуть у схемі, тож фронтенд їх не дублює.
+    """
+    try:
+        predator = PredatorParams.model_validate(payload)
+    except ValidationError as exc:
+        return PredatorValidationResponse(valid=False, errors=format_validation_errors(exc))
+    return PredatorValidationResponse(
+        valid=True,
+        r_catch_effective=max(predator.r_catch, predator.r_body),
+        aura_diameter=predator.r_aura * 2,
+    )
 
 
 @app.get("/api/simulation/status", response_model=SimulationStatus)

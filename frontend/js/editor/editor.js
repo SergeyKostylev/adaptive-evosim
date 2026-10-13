@@ -7,12 +7,12 @@
  */
 
 import {
-  validateCreature, listPresets, deletePreset, loadPreset,
+  validateCreature, validatePredator, listPresets, deletePreset, loadPreset,
   listCreatures, saveCreature, loadCreature, deleteCreature,
   listPredators, savePredator, loadPredator, deletePredator, ApiError,
 } from '../api.js';
 import {
-  stateChanged, saveToProject, resetProjectState, saveAsPreset, migrateEnvironment,
+  clone, stateChanged, saveToProject, resetProjectState, saveAsPreset, migrateEnvironment,
   applyExperimentForm, normalizeCreature, invalidateCreatureCache,
   presetCreatures, localTime,
 } from '../state.js';
@@ -200,6 +200,7 @@ export function initEditor(state) {
 
   function refresh() {
     syncLibraryBar();
+    syncDirtyMarks();
     syncCreaturePanel(api);
     syncObstaclePanel(api);
     syncScenePanel(api);
@@ -458,8 +459,34 @@ export function initEditor(state) {
   // Один елемент інтерфейсу обслуговує дві бібліотеки: істот у режимі «Істота»
   // і хижаків у режимі «Хижак». У «Сцені» він ховається — там свої списки.
   let libraryRows = [];
+  /** Останнє, що поклали/взяли з бібліотеки — для позначки «є зміни». */
+  const inLibrary = { creature: null, predator: null };
 
   const libraryKind = () => (api.tool === 'predator' ? 'predators' : 'creatures');
+
+  /**
+   * Сутності зберігаються окремо, тож треба бачити, де саме є незбережені
+   * зміни: відредагував хижака, перемкнувся на істоту — хижак лишився
+   * лише в робочому стані, але не в бібліотеці.
+   */
+  function syncDirtyMarks() {
+    const mark = (sel, current, saved, what) => {
+      const el = $(sel);
+      if (!el) return;
+      if (!saved) {
+        el.className = 'small mono muted';
+        el.textContent = `${what} ще немає в бібліотеці`;
+        return;
+      }
+      const same = JSON.stringify(current) === JSON.stringify(saved.payload);
+      el.className = same ? 'small mono saved' : 'small mono dirty';
+      el.textContent = same
+        ? `збережено як «${saved.name}»`
+        : `є зміни, не збережені в бібліотеці (останнє: «${saved.name}»)`;
+    };
+    mark('#creature-dirty', state.creature, inLibrary.creature, 'істоти');
+    mark('#pred-dirty', predatorParams(api.state.predator), inLibrary.predator, 'хижака');
+  }
 
   function syncLibraryBar() {
     const bar = $('#creature-lib');
@@ -534,6 +561,7 @@ export function initEditor(state) {
       if (libraryKind() === 'predators') {
         const res = await loadPredator(name);
         applyPredatorParams(api, name, res.predator);
+        inLibrary.predator = { name, payload: predatorParams(api.state.predator) };
         $('#lib-menu').hidden = true;
         refresh();
         message(`Завантажено хижака «${name}»`, 'ok');
@@ -541,6 +569,7 @@ export function initEditor(state) {
       }
       const res = await loadCreature(name);
       state.creature = res.creature;
+      inLibrary.creature = { name, payload: clone(res.creature) };
       presetCreatures.set(name, res.creature);
       clearLimbSelection(api);
       if (state.creature.limbs.length) {
@@ -572,42 +601,77 @@ export function initEditor(state) {
     if (lib && !lib.contains(e.target)) $('#lib-menu').hidden = true;
   });
 
-  $('#lib-save').addEventListener('click', async (e) => {
-    e.stopPropagation();
-    const input = $('#lib-save-name');
-    const kind = libraryKind();
-    const name = input.value.trim()
-      || (kind === 'predators' ? api.state.predatorName : state.creature.name);
-    if (!name) { message('Вкажи назву', 'err'); input.focus(); return; }
-
+  /**
+   * Збереження поточної сутності у бібліотеку. Доступне і зі списку над
+   * полотном, і кнопкою в панелі — користувач шукає його саме там.
+   */
+  async function saveCurrentEntity(kind, name) {
+    if (!name) { message('Вкажи назву', 'err'); return false; }
     if (kind === 'predators') {
       if (!radiiOrderOk(api.state.predator)) {
         message('Хижак не валідний: має виконуватись r_catch ≤ r_aura ≤ r_detect', 'err');
-        return;
+        return false;
       }
       try {
-        await savePredator(name, predatorParams(api.state.predator));
+        const params = predatorParams(api.state.predator);
+        await savePredator(name, params);
+        inLibrary.predator = { name, payload: params };
         api.state.predatorName = name;
         message(`Хижака «${name}» збережено в бібліотеку`, 'ok');
         syncLibrary();
         refresh();
+        return true;
       } catch (err) {
         message(`Не вдалося зберегти: ${err.message}`, 'err');
+        return false;
       }
-      return;
     }
 
     const check = await doValidate({ quiet: true });
-    if (!check.valid) { message(`Істота не валідна:\n• ${check.errors.join('\n• ')}`, 'err'); return; }
+    if (!check.valid) {
+      message(`Істота не валідна:\n• ${check.errors.join('\n• ')}`, 'err');
+      return false;
+    }
     try {
       await saveCreature(name, state.creature);
+      inLibrary.creature = { name, payload: clone(state.creature) };
       invalidateCreatureCache();
       message(`Істоту «${name}» збережено в бібліотеку`, 'ok');
       syncLibrary();
+      syncLibraryBar();
+      syncDirtyMarks();
+      return true;
     } catch (err) {
       message(`Не вдалося зберегти: ${err.message}`, 'err');
+      return false;
+    }
+  }
+
+  $('#lib-save').addEventListener('click', (e) => {
+    e.stopPropagation();
+    const kind = libraryKind();
+    const name = $('#lib-save-name').value.trim()
+      || (kind === 'predators' ? api.state.predatorName : state.creature.name);
+    saveCurrentEntity(kind, name);
+  });
+
+  $('#pred-validate').addEventListener('click', async () => {
+    try {
+      const res = await validatePredator(predatorParams(api.state.predator));
+      message(res.valid
+        ? `Валідно: спіймання ⌀${(res.r_catch_effective * 2).toFixed(1)} `
+          + `(з урахуванням тіла), аура ⌀${res.aura_diameter.toFixed(1)}`
+        : `Невалідний хижак:\n• ${res.errors.join('\n• ')}`, res.valid ? 'ok' : 'err');
+    } catch (err) {
+      message(`Не вдалося перевірити: ${err.message}`, 'err');
     }
   });
+
+  $('#creature-save-lib').addEventListener('click', () =>
+    saveCurrentEntity('creatures', state.creature.name?.trim()));
+
+  $('#pred-save-lib').addEventListener('click', () =>
+    saveCurrentEntity('predators', api.state.predatorName?.trim()));
 
   $('#lib-export').addEventListener('click', (e) => {
     e.stopPropagation();
@@ -700,17 +764,18 @@ export function initEditor(state) {
   $('#btn-save-project').addEventListener('click', async () => {
     const res = await saveToProject();
     message(res
-      ? 'Сцену збережено у проєкті (experiments/editor/last_session.json)'
+      ? 'Робочий стан збережено у проєкті (experiments/editor/last_session.json)'
       : 'Не вдалося зберегти: сервер недоступний', res ? 'ok' : 'err');
   });
 
   $('#btn-reset-project').addEventListener('click', async () => {
-    if (!window.confirm('Видалити збережену сцену з проєкту і почати з чистої?')) return;
+    if (!window.confirm('Видалити збережений робочий стан і почати з чистого? '
+      + 'Бібліотеки істот, хижаків і сцен не постраждають.')) return;
     await resetProjectState();
     resetSceneSelection();
     refresh();
     resetCamera();
-    message('Збережену сцену видалено, редактор скинуто до типових значень', 'ok');
+    message('Збережений робочий стан видалено, редактор скинуто до типових значень', 'ok');
   });
 
   window.addEventListener('keydown', (e) => {
