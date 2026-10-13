@@ -200,6 +200,33 @@ export function bodyPerimeterPoint(body, angle) {
   return [best * dx, best * dy];
 }
 
+/** Відстань від центра тіла до периметра у напрямку «вперед» (локальна вісь X). */
+export function bodyNoseRadius(body) {
+  if (!body) return 0.8;
+  if (body.shape === 'circle') return body.radius ?? 0.8;
+  const [x, y] = bodyPerimeterPoint(body, 0);
+  return Math.hypot(x, y) || 0.8;
+}
+
+/**
+ * Покажчик «вперед» — локальна вісь X істоти. Тіло кругле, тож без нього не
+ * видно, як істота обернена, а поворот — саме те, чим керуватиме мозок.
+ *
+ * Малюється **від периметра** назовні, щоб не перекреслювати тіло. Викликати
+ * треба в системі координат істоти (центр мас в початку, поворот застосовано).
+ * Одна функція на всі три місця — редактор, «привид» у сцені та живий кадр:
+ * позначення має читатись однаково скрізь.
+ */
+export function headingArrow(ctx, from, opts = {}) {
+  const { color = '#fff', lw = 0.02, length = 0.6 } = opts;
+  const tip = from + length;
+  const back = tip - length * 0.38;
+  const half = length * 0.28;
+  line(ctx, from, 0, tip, 0, { stroke: color, lw });
+  line(ctx, tip, 0, back, half, { stroke: color, lw });
+  line(ctx, tip, 0, back, -half, { stroke: color, lw });
+}
+
 /** Пряма кінематика у нейтральній позі (усі кути суглобів = 0). */
 export function segmentPoses(creature) {
   const out = [];
@@ -254,12 +281,8 @@ export function drawCreatureGhost(ctx, view, creature, pose, colors, opts = {}) 
     }
   }
 
-  // Напрямок «вперед» (локальна вісь X)
   if (withArrow) {
-    const r = (body?.radius ?? 0.8) + 0.5;
-    line(ctx, 0, 0, r, 0, { stroke: hexAlpha(color, alpha), lw });
-    line(ctx, r, 0, r - 0.25, 0.18, { stroke: hexAlpha(color, alpha), lw });
-    line(ctx, r, 0, r - 0.25, -0.18, { stroke: hexAlpha(color, alpha), lw });
+    headingArrow(ctx, bodyNoseRadius(body), { color: hexAlpha(color, alpha), lw });
   }
   ctx.restore();
 }

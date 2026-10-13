@@ -8,7 +8,7 @@
 
 import {
   makeView, withWorld, grid, polygon, circle, line, capsule, aura, screenText, hexAlpha,
-  worldVerts, drawCreatureGhost, creatureReach,
+  worldVerts, drawCreatureGhost, creatureReach, bodyNoseRadius, headingArrow,
 } from './shapes.js';
 
 /** Статичний вміст сцени: межі світу, перешкоди, маршрути, точки появи. */
@@ -177,11 +177,7 @@ function drawLiveFrame(ctx, view, scene, frame, colors) {
   } else {
     circle(ctx, 0, 0, body.radius ?? 0.8, { fill: hexAlpha(tint, 0.28), stroke: tint, lw });
   }
-  // Напрямок «вперед» — інакше на колі не видно, куди істота обернена
-  const nose = (body.radius ?? 0.8) + 0.45;
-  line(ctx, 0, 0, nose, 0, { stroke: hexAlpha(tint, 0.9), lw });
-  line(ctx, nose, 0, nose - 0.22, 0.16, { stroke: hexAlpha(tint, 0.9), lw });
-  line(ctx, nose, 0, nose - 0.22, -0.16, { stroke: hexAlpha(tint, 0.9), lw });
+  headingArrow(ctx, bodyNoseRadius(body), { color: hexAlpha(tint, 0.9), lw });
   ctx.restore();
 
   return labels;
