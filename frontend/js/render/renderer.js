@@ -7,7 +7,7 @@
  */
 
 import {
-  makeView, withWorld, grid, polygon, circle, line, aura, screenText, hexAlpha,
+  makeView, withWorld, grid, polygon, circle, line, capsule, aura, screenText, hexAlpha,
   worldVerts, drawCreatureGhost, creatureReach,
 } from './shapes.js';
 
@@ -89,6 +89,104 @@ export function drawExperiment(ctx, view, config, colors, opts = {}) {
   return labels;
 }
 
+// ---------------------------------------------------------------------------
+// Живі кадри /ws/live (§9.5). Статика сцени приходить **один раз** пакетом
+// `scene`, у кадрах її немає — тому малювання розділене на два аргументи.
+// ---------------------------------------------------------------------------
+
+/** Статика епізоду: межі світу, нерухомі перешкоди, маршрути патрулювання. */
+function drawLiveScene(ctx, view, scene, colors) {
+  const world = scene.world ?? { width: 60, height: 40 };
+  const lw = view.px(1.6);
+  const w = world.width / 2, h = world.height / 2;
+  polygon(ctx, [[-w, -h], [w, -h], [w, h], [-w, h]], {
+    stroke: hexAlpha(colors.muted, 0.9), fill: hexAlpha(colors.panel, 0.25), lw: view.px(2),
+  });
+
+  const stroke = hexAlpha(colors.warn, 0.85);
+  const fill = hexAlpha(colors.warn, 0.12);
+  for (const o of scene.obstacles_static ?? []) {
+    // Вершини статичних перешкод уже у світових координатах (§9.5)
+    if (o.type === 'static_circle') circle(ctx, o.x, o.y, o.radius, { stroke, fill, lw });
+    else if (o.vertices?.length) polygon(ctx, o.vertices, { stroke, fill, lw });
+  }
+
+  for (const route of scene.waypoints ?? []) {
+    if (route.length >= 2) {
+      polygon(ctx, route, { stroke: hexAlpha(colors.danger, 0.35), lw, dash: [1, 1], close: true });
+    }
+    for (const [x, y] of route) {
+      circle(ctx, x, y, view.px(2.5), { fill: hexAlpha(colors.danger, 0.6) });
+    }
+  }
+}
+
+/** Кадр: істота, хижаки з аурою, рухомі перешкоди, промені сенсорів. */
+function drawLiveFrame(ctx, view, scene, frame, colors) {
+  const labels = [];
+  const lw = view.px(1.6);
+
+  // Рухомі перешкоди: форма зі `scene`, поза — з кадру (§9.5)
+  const shapes = new Map((scene.obstacles_dynamic ?? []).map((o) => [o.id, o.vertices]));
+  for (const o of frame.obstacles_dynamic ?? []) {
+    const verts = shapes.get(o.id);
+    if (!verts) continue;
+    polygon(ctx, worldVerts(verts, [o.x, o.y], o.angle), {
+      stroke: hexAlpha(colors.warn, 0.95), fill: hexAlpha(colors.warn, 0.18), lw,
+    });
+  }
+
+  // Хижаки: аура градієнтом, далі радіуси, далі саме тіло
+  for (const p of frame.predators ?? []) {
+    if (p.enabled === false) continue;
+    aura(ctx, p.x, p.y, p.r_aura, colors.danger);
+    circle(ctx, p.x, p.y, p.r_detect, { stroke: hexAlpha(colors.danger, 0.35), lw, dash: [2, 1] });
+    circle(ctx, p.x, p.y, p.r_aura, { stroke: hexAlpha(colors.danger, 0.6), lw });
+    circle(ctx, p.x, p.y, p.r_body, { fill: hexAlpha(colors.danger, 0.8), stroke: colors.danger, lw });
+    labels.push({
+      x: p.x, y: p.y + p.r_body + 0.5, text: p.state, size: 11,
+      color: hexAlpha(colors.danger, 0.95), bg: hexAlpha(colors.bg, 0.7),
+    });
+  }
+
+  // Промені радара (етап 4; до того список порожній)
+  for (const ray of frame.sensors?.rays ?? []) {
+    line(ctx, ray.x1, ray.y1, ray.x2, ray.y2, {
+      stroke: hexAlpha(ray.hit === 'predator' ? colors.danger : colors.accent2, 0.55),
+      lw: view.px(1),
+    });
+  }
+
+  const creature = frame.creature;
+  if (!creature) return labels;
+  const alive = creature.alive !== false;
+  const tint = alive ? colors.accent : colors.muted;
+
+  for (const s of creature.segments ?? []) {
+    capsule(ctx, s.x, s.y, s.angle, s.length, s.width, {
+      fill: hexAlpha(tint, 0.3), stroke: hexAlpha(tint, 0.9), lw,
+    });
+  }
+
+  const body = creature.body ?? {};
+  ctx.save();
+  ctx.translate(body.x ?? 0, body.y ?? 0);
+  ctx.rotate(body.angle ?? 0);
+  if (body.shape === 'polygon' && body.vertices?.length >= 3) {
+    polygon(ctx, body.vertices, { fill: hexAlpha(tint, 0.28), stroke: tint, lw });
+  } else {
+    circle(ctx, 0, 0, body.radius ?? 0.8, { fill: hexAlpha(tint, 0.28), stroke: tint, lw });
+  }
+  // Напрямок «вперед» — інакше на колі не видно, куди істота обернена
+  const nose = (body.radius ?? 0.8) + 0.45;
+  line(ctx, 0, 0, nose, 0, { stroke: hexAlpha(tint, 0.9), lw });
+  line(ctx, nose, 0, nose - 0.22, 0.16, { stroke: hexAlpha(tint, 0.9), lw });
+  line(ctx, nose, 0, nose - 0.22, -0.16, { stroke: hexAlpha(tint, 0.9), lw });
+  ctx.restore();
+
+  return labels;
+}
+
 /** Мініатюра сцени для списків вибору: світ, перешкоди, маршрути, старти. */
 export function renderSceneThumb(canvas, env, colors, { size = 34 } = {}) {
   const dpr = window.devicePixelRatio || 1;
@@ -143,6 +241,12 @@ export function createPreview(canvas, colors) {
   const ctx = canvas.getContext('2d');
   const cam = { x: 0, y: 0, scale: 14 };
   let cssW = 1, cssH = 1, current = null, fitScale = 14;
+  //: Живий епізод: статика з пакета `scene` + найсвіжіший `frame` (§9.5).
+  //  Поки він заданий, статична композиція експерименту не малюється.
+  let live = null;
+  //: Камера йде за істотою (§10.2). Будь-яке перетягування передає
+  //  керування користувачу — інакше камера «виривала б» мишу з рук.
+  let follow = true;
   // Вкладка на старті прихована → канвас має нульовий розмір, і підгонка за
   // ним дала б безглуздий масштаб. Тому підганяємо при першому реальному
   // вимірюванні, а не при першому малюванні.
@@ -168,7 +272,8 @@ export function createPreview(canvas, colors) {
   }
 
   function fit(config = current) {
-    const world = config?.environment?.world ?? { width: 60, height: 40 };
+    const world = live?.scene?.world
+      ?? config?.environment?.world ?? { width: 60, height: 40 };
     cam.x = 0;
     cam.y = 0;
     cam.scale = measured()
@@ -186,13 +291,18 @@ export function createPreview(canvas, colors) {
     ctx.fillStyle = colors.bg;
     ctx.fillRect(0, 0, cssW, cssH);
     ctx.restore();
-    if (!current) return;
+    if (!current && !live) return;
 
     const view = makeView(cam, cssW, cssH);
     let labels = [];
     withWorld(ctx, cam, cssW, cssH, () => {
       grid(ctx, view, cam, cssW, cssH, colors);
-      labels = drawExperiment(ctx, view, current, colors) ?? [];
+      if (live?.scene) {
+        drawLiveScene(ctx, view, live.scene, colors);
+        if (live.frame) labels = drawLiveFrame(ctx, view, live.scene, live.frame, colors) ?? [];
+      } else if (current) {
+        labels = drawExperiment(ctx, view, current, colors) ?? [];
+      }
     });
     for (const l of labels) {
       const s = view.toScreen(l.x, l.y);
@@ -210,6 +320,7 @@ export function createPreview(canvas, colors) {
   });
   canvas.addEventListener('pointermove', (e) => {
     if (!panning || !last) return;
+    follow = false;                 // користувач узяв камеру на себе
     cam.x -= (e.clientX - last.x) / cam.scale;
     cam.y += (e.clientY - last.y) / cam.scale;
     last = { x: e.clientX, y: e.clientY };
@@ -235,11 +346,49 @@ export function createPreview(canvas, colors) {
   resize();
 
   return {
+    /** Статична композиція експерименту (§9.3) — поза живим епізодом. */
     draw(config) {
       current = config;
+      if (live) return;             // живі кадри мають пріоритет над композицією
       maybeFit();
       paint();
     },
+    /** Пакет `scene`: статика епізоду, приходить один раз (§9.5). */
+    showScene(scene) {
+      const firstTime = !live;
+      live = { scene, frame: live?.frame ?? null };
+      if (firstTime) {
+        follow = true;
+        fit();
+      }
+      paint();
+    },
+    /** Найсвіжіший кадр; камера за потреби їде за істотою. */
+    showFrame(frame) {
+      if (!live) live = { scene: null, frame: null };
+      live.frame = frame;
+      const body = frame?.creature?.body;
+      if (follow && body) {
+        cam.x = body.x;
+        cam.y = body.y;
+      }
+      paint();
+    },
+    /** Повернення до статичної композиції після зупинки прев'ю. */
+    clearLive() {
+      live = null;
+      follow = true;
+      paint();
+    },
+    get live() { return Boolean(live); },
+    /** Повернути камеру на істоту й знову за нею стежити. */
+    followCreature() {
+      follow = true;
+      const body = live?.frame?.creature?.body;
+      if (body) { cam.x = body.x; cam.y = body.y; }
+      paint();
+    },
+    get following() { return follow; },
     fit,
     zoom: () => cam.scale / fitScale,
   };

@@ -9,8 +9,9 @@
 
 import {
   listCreatures, listPredators, listPresets, loadCreature, loadPredator, loadPreset,
-  validateCreature,
+  validateCreature, startPreview, stopPreview, ApiError,
 } from './api.js';
+import { connect } from './ws.js';
 import { state, clone, buildExperimentConfig, migrateEnvironment } from './state.js';
 import { createPreview, renderSceneThumb } from './render/renderer.js';
 import { themeColors } from './render/shapes.js';
@@ -206,17 +207,17 @@ function summarize({ config, dropped }) {
   const env = config.environment;
   const gaps = missing();
   if (gaps.length) {
-    $('#sim-summary').textContent = `Немає з чого зібрати експеримент: вибери ${gaps.join(', ')}`;
+    setSummary(`Немає з чого зібрати експеримент: вибери ${gaps.join(', ')}`);
     $('#sim-warn').textContent = 'сутності беруться лише зі збережених — збережи їх у редакторі';
     return;
   }
   const predName = pickers.predator.value;
-  $('#sim-summary').textContent = [
+  setSummary([
     `істота: ${config.creature.name ?? '—'} (${config.creature.limbs.length} кінц.)`,
     `хижак: ${predName} × ${env.predators.length} маршр.`,
     `перешкод: ${env.obstacles.length}`,
     `стартів: ${env.spawns.length || '1 (центр світу)'}`,
-  ].join(' · ');
+  ].join(' · '));
   $('#sim-warn').textContent = warnings(config, dropped).join(' · ');
 }
 
@@ -271,11 +272,121 @@ async function describeCreature(config) {
     .toLocaleString('uk-UA')} с`);
 }
 
+/** Підсумок видно і в панелі, і в рядку під полотном. */
+function setSummary(text) {
+  for (const sel of ['#sim-summary', '#sim-status-line']) {
+    const el = $(sel);
+    if (el) el.textContent = text;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Живий перегляд (§9.4–9.5). Канал один на застосунок, тож і тут один сокет:
+// кадри малюються на тому самому полотні, що й статична композиція.
+// ---------------------------------------------------------------------------
+let socket = null;
+/** Що саме зараз показуємо наживо — щоб зміна темпу перезапустила те саме. */
+let liveRequest = null;
+
+const liveSpeed = () => Number($('#live-speed')?.value ?? 1);
+
+function setLiveUi(active) {
+  $('#live-stop').disabled = !active;
+  $('#live-hud').hidden = !active;
+  $('#hud-state').textContent = active ? 'живий перегляд' : 'зупинено';
+}
+
+function showConnection(state) {
+  const labels = { open: 'канал: підключено', closed: 'канал: перепідключення…', error: 'канал: помилка' };
+  const el = $('#live-conn');
+  if (el) {
+    el.textContent = labels[state] ?? 'канал: —';
+    el.className = `small ${state === 'open' ? 'ok' : 'warn'}`;
+  }
+}
+
+function openSocket() {
+  if (socket) return;
+  socket = connect('/ws/live', {
+    onPacket: (packet) => { if (packet.type === 'scene') preview?.showScene(packet); },
+    onFrame: (frame) => {
+      preview?.showFrame(frame);
+      const hud = frame.hud ?? {};
+      $('#live-t').textContent = `t ${(frame.t ?? 0).toFixed(1)} с`;
+      $('#live-disp').textContent = `зміщення ${(hud.displacement ?? 0).toFixed(2)}`;
+      $('#live-speed-v').textContent = `|v| ${(hud.speed ?? 0).toFixed(2)}`;
+      $('#live-episode').textContent = `епізод ${(frame.episode ?? 0) + 1}`;
+    },
+    onState: showConnection,
+  });
+}
+
+function closeSocket() {
+  socket?.close();
+  socket = null;
+  showConnection(null);
+}
+
+/**
+ * Запускає епізод із тестовою синусоїдою. `creature`/`environment` — копії,
+ * бо прев'ю не має залежати від подальших правок у редакторі.
+ *
+ * `origin` — звідки взято сутності («чернетка» чи «збережене»): це єдине, що
+ * справді розрізняє дві кнопки «Тест-заплив», і єдине, чого немає в панелі
+ * праворуч. Назва істоти, ідентифікатор прев'ю та контролер туди не йдуть:
+ * назва вже є в панелі, контролер на етапі 2 завжди один (§2.4), а `pv-…`
+ * потрібен лише для налагодження — усе це лишається в `title`.
+ */
+export async function startDemoPreview(creature, environment, { origin } = {}) {
+  if (!creature?.limbs?.length) {
+    $('#sim-warn').textContent = 'тест-заплив неможливий: в істоти немає жодної кінцівки';
+    return null;
+  }
+  liveRequest = { creature: clone(creature), environment: clone(environment ?? {}), origin };
+  try {
+    const res = await startPreview({
+      source: 'demo',
+      creature: liveRequest.creature,
+      environment: liveRequest.environment,
+      speed: liveSpeed(),
+      loop: true,
+    });
+    openSocket();
+    setLiveUi(true);
+    const name = creature.name || 'істота';
+    const run = $('#hud-run');
+    run.textContent = origin ?? '';
+    run.title = `${name} · ${origin ?? 'прев\'ю'} · ${res.preview_id} · `
+      + `контролер-синусоїда (§2.4) · епізод ${res.episode_seconds} с`;
+    $('#sim-warn').textContent = '';
+    return res;
+  } catch (e) {
+    liveRequest = null;
+    $('#sim-warn').textContent = e instanceof ApiError
+      ? `не вдалося запустити прев'ю: ${e.message}` : String(e);
+    return null;
+  }
+}
+
+export async function stopLivePreview() {
+  liveRequest = null;
+  closeSocket();
+  try {
+    await stopPreview();
+  } catch { /* сервер міг і так не мати активного прев'ю */ }
+  setLiveUi(false);
+  const run = $('#hud-run');
+  run.textContent = '';
+  run.title = '';
+  preview?.clearLive();
+  refreshExperimentPreview();
+}
+
 export async function refreshExperimentPreview() {
   await resolve();
   const assembled = assembleExperiment();
   summarize(assembled);
-  preview?.draw(assembled.config);
+  preview?.draw(assembled.config);      // у живому режимі `draw` сам поступиться кадрам
   describeCreature(assembled.config);
   const el = $('#exp-json');
   if (el) el.textContent = JSON.stringify(assembled.config, null, 2);
@@ -288,6 +399,23 @@ export async function initSimulationPicker() {
     pickers[kind] = createPicker($(`#pick-${kind}`), { onPick: refreshExperimentPreview });
   }
   $('#sim-fit').addEventListener('click', () => preview.fit());
+  $('#live-follow').addEventListener('click', () => preview.followCreature());
+  $('#live-stop').addEventListener('click', () => stopLivePreview());
+  $('#live-start').addEventListener('click', async () => {
+    const { config } = assembleExperiment();
+    await startDemoPreview(config.creature, config.environment, { origin: 'збережене' });
+  });
+  // Темп змінюється на сервері (пауза між кадрами), тож прев'ю перезапускається
+  $('#live-speed').addEventListener('change', () => {
+    if (liveRequest) {
+      startDemoPreview(liveRequest.creature, liveRequest.environment,
+        { origin: liveRequest.origin });
+    }
+  });
+  // Чернетка з редактора: кнопка там, а канал тут — редактор не знає про вкладки
+  window.addEventListener('testswim', (e) => {
+    startDemoPreview(e.detail.creature, e.detail.environment, { origin: 'чернетка' });
+  });
   $('#exp-copy').addEventListener('click', async () => {
     try {
       await navigator.clipboard.writeText($('#exp-json').textContent);

@@ -307,6 +307,64 @@ class GenomeJSON(_Model):
 
 
 # ---------------------------------------------------------------------------
+# §9.4 Живий перегляд (`POST /api/preview`)
+# ---------------------------------------------------------------------------
+class PreviewRequest(_Model):
+    """Запит на live-епізод; кадри йдуть у `/ws/live` (§9.4, §9.5).
+
+    Етапність джерел: `demo` — етап 2, `genome`/`best` — етап 3,
+    `live_training` — етап 4. Нереалізоване джерело повертає 501.
+    """
+
+    source: Literal["demo", "genome", "best", "live_training"] = "demo"
+    creature: CreatureConfig | None = None
+    environment: EnvironmentConfig | None = Field(default_factory=lambda: EnvironmentConfig())
+    genome: GenomeJSON | None = None
+    run_id: str | None = Field(default=None, max_length=128)
+    seed: int = Field(default=42, ge=0)
+    episode_seconds: float = Field(default=C.PREVIEW_EPISODE_SECONDS, gt=0, le=600)
+    speed: float = Field(default=1.0,
+                         ge=C.PREVIEW_SPEED_RANGE[0], le=C.PREVIEW_SPEED_RANGE[1])
+    loop: bool = True
+    #: Яку з `spawns` узяти за старт (§9.2); порожній список — центр світу
+    spawn_index: int = Field(default=0, ge=0)
+
+    @model_validator(mode="after")
+    def _source_requirements(self) -> "PreviewRequest":
+        if self.source in ("demo", "genome") and self.creature is None:
+            raise ValueError(f"для source='{self.source}' потрібне поле creature")
+        if self.source == "genome" and self.genome is None:
+            raise ValueError("для source='genome' потрібне поле genome")
+        if self.source in ("best", "live_training") and not self.run_id:
+            raise ValueError(f"для source='{self.source}' потрібен run_id")
+        if self.genome is not None and self.creature is not None:
+            if self.genome.creature_hash != self.creature.creature_hash:
+                raise ValueError("геном побудований для іншої морфології (creature_hash)")
+        return self
+
+
+class PreviewResponse(BaseModel):
+    """Відповідь на старт прев'ю: ідентифікатор і розміри мережі (§9.4)."""
+
+    preview_id: str
+    source: str
+    n_joints: int
+    n_in: int
+    genome_size: int
+    episode_seconds: float
+    dt: float = C.DT
+    control_every: int = C.CONTROL_EVERY
+
+
+class PreviewState(BaseModel):
+    """`GET`-подібний стан каналу — чи є що дивитись у `/ws/live`."""
+
+    active: bool
+    preview_id: str | None = None
+    source: str | None = None
+
+
+# ---------------------------------------------------------------------------
 # §9.4 Стан конструктора (чернетка між сеансами)
 # ---------------------------------------------------------------------------
 class EditorState(_Model):

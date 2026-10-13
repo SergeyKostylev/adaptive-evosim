@@ -13,6 +13,10 @@ Two specification documents govern the work (both in Ukrainian):
 
 Implementation rule stated in the spec: write code strictly per `PROJECT_SPEC.md`, without inventing math or contracts. Any change to the contracts in §2–9 goes into `PROJECT_SPEC.md` **first**, then into the code.
 
+**Stages 1–2 are implemented.**
+
+**Stage 2 (physics + live view)** added: `core/hydro.py` (scalar `point_force` core + `segment_resultants`; the NumPy `segment_point_forces` is a test-facing wrapper over the same core), `core/creature.py`, `core/obstacles.py`, `core/physics.py`, `core/world.py` (episode facade + `SineController`), predator **bodies only** in `core/predator.py` (FSM is Stage 4), `services/live_stream.py` (`LiveHub`/`PreviewSession`/`PreviewManager`), `POST|DELETE|GET /api/preview` and `WS /ws/live`. Frontend: `ws.js`, live frame drawing in `render/renderer.js` (`showScene`/`showFrame`/`clearLive`, camera follows the creature), live HUD + **Тест-заплив** on the Simulation tab, and a draft **Тест-заплив** button in the editor. Tests: `test_hydro.py`, `test_creature_build.py`, `test_live_preview.py`.
+
 **Stage 1 is implemented and went well past its DoD.** Backend: `config.py`, full `schemas.py`, `POST /api/creature/validate`, `POST /api/predator/validate`, `GET/PUT/DELETE /api/editor/state`, and three libraries under `/api/editor/{creatures,predators,presets}[/{name}]`, all persisted in `experiments/editor/` through `services/editor_store.py`, plus the `GET /api/simulation/status` stub and Docker/nginx. Frontend: the three-entity editor, the scene preview on the Simulation tab, and the experiment composer. Everything in `core/`, `evolution/`, `export/` and `services/sim_manager.py`/`live_stream.py` is still a docstring-only stub naming its stage — physics starts at Stage 2. Each stage ends with: green tests → DoD checklist verified → commit tagged `stage-N` (`stage-1` = commit `c3ca8fc`).
 
 ## Commands
@@ -74,7 +78,11 @@ Data flow: Editor → `POST /api/creature/validate` → `schemas.py`; `POST /api
 
 ## Data safety
 
-`experiments/editor/` holds the user's **live** editor data: `last_session.json` (the working state open in their browser, rewritten by autosave) and the three libraries `creatures/`, `predators/`, `presets/`. It is gitignored, so anything deleted there is gone for good. Never bulk-delete or reset those collections, and never point a UI/manual test at the running stack on :8080 — the app autosaves on every edit and will overwrite whatever they have open. Run such checks against a throwaway backend instead:
+`experiments/editor/` holds the user's **live** editor data: `last_session.json` (the working state open in their browser, rewritten by autosave) and the three libraries `creatures/`, `predators/`, `presets/`.
+
+The three libraries are **tracked in git** on purpose: hand-built entities are research input, and a gitignored `experiments/editor/` once died together with a deleted worktree. Commit new entities instead of leaving them untracked. Still ignored: `last_session.json` (autosave churn) and `experiments/runs/*`.
+
+Deleting an entity file is still a real loss of the user's work (git only helps once it is committed). Never bulk-delete or reset those collections, and never point a UI/manual test at the running stack on :8080 — the app autosaves on every edit and will overwrite whatever they have open. Run such checks against a throwaway backend instead:
 
 ```bash
 EVOSIM_DATA_DIR=<tmpdir> .venv/bin/python -m uvicorn app.main:app --port 8099   # from backend/
@@ -86,6 +94,11 @@ When cleaning up after a test, delete only the exact names that test created.
 
 - **Determinism is the most important property** (it is a research artifact): one `np.random.Generator(PCG64(seed))` per run, episode seeds derived via `SeedSequence.spawn` from `(run_seed, gen, individual_idx, episode_idx)`, fixed `DT`, fixed evaluation order. Same seed must produce a bit-identical `metrics.csv` (`test_determinism.py`).
 - **No magic numbers outside `config.py`.** Every constant from §2–8 lives there or comes from the request body.
+- Hydro's single source of truth is the **scalar** `hydro.point_force` (plain floats, no NumPy): sample arrays are tiny (`N_s = 3`) and NumPy's per-call overhead dwarfs the arithmetic there — switching to it was an 11× speedup of the headless path. `segment_point_forces` (NumPy-shaped) and `segment_resultants` (per-segment resultant + torque for `physics.py`) both call it; never fork the math.
+- `physics.apply_fluid_forces` assigns `body.force`/`body.torque` rather than accumulating: `space.step` zeroes them each step and hydro is the only force source (motors act through constraint impulses). Applying the resultant at the CoM plus `Σ r_k × F_k` is exactly equivalent to applying each point force at its point — but the per-point `F_MAX` clamp must still happen **before** summing.
+- The demo sinusoid's phase is per **segment within a limb** (`φ = (π/2)·k`), not per flat joint index: a flat index puts a symmetric limb pair in antiphase, and the creature yaws in place (56 units of path, 1.4 units of displacement) instead of swimming (5.9 units). See §2.4.
+- `space.damping` is Pymunk's *per-second* retention, not per-step. Reading `0.98` as per-step would mean 0.09/s and kill all swimming.
+- A `TestClient` used **without** `with` spins a fresh event loop per request, so a preview task created by `POST /api/preview` dies immediately and `/ws/live` blocks forever. Websocket tests must use `with TestClient(app) as client:` (see `tests/test_live_preview.py`).
 - Fixed `DT = 1/120`; the brain runs every `CONTROL_EVERY = 6` steps (20 Hz) and `motor.rate` is held between control ticks. Motors are driven by `rate` (target angular velocity), never by direct torque.
 - Hydro forces are computed from velocities **at the start of the step**, applied, then `space.step(DT)`. Clamps `F_MAX` per point and `|v| ≤ V_MAX` after the step are what keep bad genomes from exploding.
 - Swimming works solely through drag anisotropy `C_d_perp ≫ C_d_par`; `g = (0,0)` and there is no water surface — never add buoyancy or a water level.

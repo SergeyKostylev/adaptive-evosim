@@ -84,6 +84,9 @@ function initTabs() {
   // Режим редактора повідомляє про себе подією — щоб editor.js не знав про URL
   window.addEventListener('editortool', (e) =>
     writeUrl({ tool: e.detail.tool, scene: e.detail.sceneTool }));
+  // Тест-заплив народжується в редакторі, а показується в «Симуляції»:
+  // вкладками відає лише app.js (§10.3)
+  window.addEventListener('testswim', () => activateTab('simulation'));
   window.addEventListener('popstate', () => {
     const fromUrl = readUrl();
     if (fromUrl.tab) activateTab(fromUrl.tab, { silent: true });

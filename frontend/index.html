@@ -230,6 +230,10 @@
           <button id="btn-validate">Перевірити</button>
           <button id="creature-save-lib" class="primary">Зберегти істоту</button>
         </div>
+        <div class="btns" style="margin-top:6px">
+          <button id="btn-test-swim" title="POST /api/preview {source:'demo'} — поточна чернетка на тестовій синусоїді">
+            Тест-заплив (чернетка)</button>
+        </div>
         <p class="small muted" style="margin:6px 0 0">Зберігається <b>лише істота</b> — у свою
           бібліотеку, під назвою з поля «Назва істоти». Хижак і сцена мають власні кнопки.</p>
         <p class="small mono" id="creature-dirty" style="margin:4px 0 0"></p>
@@ -261,19 +265,11 @@
         <p class="small muted" id="preset-hint" style="margin-bottom:0">Клік по варіанту завантажує його.</p>
       </div>
 
-      <!-- Дії -->
-      <div class="group">
-        <h3>Робочий стан</h3>
-        <div class="btns">
-          <button id="btn-save-project" title="experiments/editor/last_session.json">Зберегти в проєкт</button>
-          <button id="btn-reset-project" class="danger">Скинути збережене</button>
-        </div>
-        <input type="file" id="file-input" accept="application/json" hidden>
-        <p class="small muted" style="margin:6px 0 0">Робочий стан (істота, хижак, сцена)
-          зберігається автоматично й відкривається при наступному завантаженні сторінки.
-          Для експерименту сутності треба зберегти окремо — у бібліотеки.</p>
-        <div id="validate-msg" class="small" style="margin-top:6px"></div>
-      </div>
+      <!-- Повідомлення редактора (валідація, збереження, завантаження).
+           Робочий стан зберігається автоматично — окремої панелі для цього
+           немає: точки збереження — кнопки в панелях самих сутностей. -->
+      <input type="file" id="file-input" accept="application/json" hidden>
+      <div id="validate-msg" class="small" style="margin-bottom:var(--gap)"></div>
 
       <div class="group">
         <h3>Вигляд</h3>
@@ -375,15 +371,32 @@
       <div class="canvas-top" id="sim-hud">
         <div class="hud-row">
           <span class="mono" id="hud-state">зупинено</span>
-          <span class="muted small" id="hud-run">прогону ще не було</span>
+          <span class="muted small" id="hud-run"></span>
           <span class="spacer"></span>
+          <button id="live-start" class="primary" title="POST /api/preview — епізод із тестовою синусоїдою (§2.4)">Тест-заплив</button>
+          <button id="live-stop" disabled>Зупинити</button>
+          <select id="live-speed" title="speed — множник темпу відтворення">
+            <option value="0.25">×0.25</option>
+            <option value="0.5">×0.5</option>
+            <option value="1" selected>×1</option>
+            <option value="2">×2</option>
+            <option value="4">×4</option>
+          </select>
+          <button id="live-follow" title="Повернути камеру на істоту">За істотою</button>
           <button id="sim-fit" title="Вписати світ у вікно">Вписати</button>
         </div>
-      </div>
+        <div class="hud-row" id="live-hud" hidden>
+          <span class="mono" id="live-t">t 0.0 с</span>
+          <span class="mono" id="live-disp">зміщення 0.00</span>
+          <span class="mono" id="live-speed-v">|v| 0.00</span>
+          <span class="mono muted" id="live-episode">епізод 1</span>
+          <span class="spacer"></span>
+          <span class="small muted" id="live-conn">канал: —</span>
+        </div>
       </div>
 
       <div class="statusbar">
-        <span class="hint" id="sim-summary">—</span>
+        <span class="hint" id="sim-status-line">—</span>
         <span class="spacer"></span>
         <span id="sim-warn" class="warn"></span>
       </div>
@@ -407,8 +420,9 @@
           <span>розмір геному</span><span id="sim-genome">—</span>
           <span>сим-секунд / покоління</span><span id="sim-cost">—</span>
         </div>
-        <p class="small muted" style="margin:8px 0 0">Оцінка часу з'явиться після
-          етапу 2, коли буде відома реальна швидкість фізики.</p>
+        <p class="small muted" style="margin:8px 0 0">«Тест-заплив» запускає епізод
+          із контролером-синусоїдою (§2.4) — це базова лінія, з якою порівнюється
+          навчена істота.</p>
       </div>
       <div class="group" style="flex:1; min-height:0">
         <h3>Конфігурація прогону</h3>

@@ -161,8 +161,45 @@ export function freeAttachAngle(api) {
 }
 
 /**
- * Клік інструментом «Кінцівка»: по існуючій точці кріплення — вибір
- * (Ctrl/Cmd — додати до виділення), по вільному місцю — нова кінцівка.
+ * Де опинився клік відносно центрального тіла: `perimeter` — у смузі `tol`
+ * навколо периметра (там і кріпляться кінцівки), `inside` — глибоко всередині,
+ * `outside` — відкрита вода.
+ *
+ * Саме смуга, а не весь диск: внутрішність тіла — велика площа, по якій легко
+ * влучити випадково, а допуск `tol` рахується в пікселях, тож на малому зумі
+ * смуга однаково накриває майже все тіло.
+ */
+function bodyZone(body, p, tol) {
+  const [px, py] = bodyPerimeterPoint(body, Math.atan2(p.y, p.x));
+  const reach = Math.hypot(px, py);
+  if (reach <= 0) return 'outside';
+  const dist = Math.hypot(p.x, p.y);
+  if (Math.abs(dist - reach) <= tol) return 'perimeter';
+  return dist < reach ? 'inside' : 'outside';
+}
+
+/** Сегмент наявної кінцівки під точкою (прямокутник length×width + допуск). */
+function limbAtPoint(creature, p, tol) {
+  for (const s of segmentPoses(creature)) {
+    const dx = p.x - s.x, dy = p.y - s.y;
+    const ca = Math.cos(s.angle), sa = Math.sin(s.angle);
+    const along = dx * ca + dy * sa;          // локальна вісь сегмента
+    const across = -dx * sa + dy * ca;
+    if (Math.abs(along) <= s.length / 2 + tol * 0.5
+      && Math.abs(across) <= s.width / 2 + tol * 0.5) {
+      return { limb: s.limb, seg: s.idx };
+    }
+  }
+  return null;
+}
+
+/**
+ * Клік інструментом «Істота». Пріоритет цілей: точка кріплення → сегмент
+ * наявної кінцівки → центральне тіло (нова кінцівка).
+ *
+ * Клік по порожньому місцю **нічого не робить**: раніше він додавав кінцівку
+ * будь-де на полотні, тож спроба вибрати кінцівку чи просто клік по воді
+ * непомітно нарощували морфологію.
  */
 export function handleLimbClick(api, p, { additive = false, hitRadius = 0.4 } = {}) {
   const creature = api.state.creature;
@@ -175,17 +212,31 @@ export function handleLimbClick(api, p, { additive = false, hitRadius = 0.4 } = 
     if (d <= bestDist) { bestDist = d; hit = i; }
   });
 
+  // Клік по сегменту — теж вибір його кінцівки (і саме того сегмента у формі)
+  const onLimb = hit < 0 ? limbAtPoint(creature, p, hitRadius) : null;
+  if (onLimb) hit = onLimb.limb;
+
   if (hit >= 0) {
     selectLimb(api, hit, { additive });
-    const n = selectedLimbIndices(api).length;
-    api.setHint(n > 1
-      ? `Виділено ${n} кінцівок: ${selectedLimbIndices(api).map((i) => `L${i}`).join(', ')}`
+    if (onLimb && api.sel.limb === onLimb.limb) api.sel.seg = onLimb.seg;
+    const sel = selectedLimbIndices(api);
+    api.setHint(sel.length > 1
+      ? `Виділено ${sel.length} кінцівок: ${sel.map((i) => `L${i}`).join(', ')}`
       : `Кінцівка L${hit} — редагується`);
     api.refresh();
     return;
   }
 
-  addLimb(api, Math.atan2(p.y, p.x), { additive });
+  const zone = bodyZone(creature.body, p, hitRadius);
+  if (zone === 'perimeter') {
+    addLimb(api, Math.atan2(p.y, p.x), { additive });
+    return;
+  }
+
+  api.setHint(zone === 'inside'
+    ? 'Форма тіла задається слайдерами; кінцівка додається кліком по його периметрі'
+    : 'Кінцівка додається кліком по периметру тіла (або кнопкою «+ Кінцівка»); '
+      + 'клік по сегменту вибирає кінцівку');
 }
 
 // --- Малювання -------------------------------------------------------------

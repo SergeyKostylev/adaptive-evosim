@@ -56,6 +56,20 @@ export const validatePredator = (predator) =>
 /** GET /api/simulation/status → {state, run_id?, generation, population, elapsed_s, mode} */
 export const getStatus = () => request('/simulation/status');
 
+// --- Живий перегляд (§9.4) --------------------------------------------------
+/**
+ * POST /api/preview — стартує live-епізод; кадри йдуть у /ws/live.
+ * На етапі 2 доступне лише `source: 'demo'` (контролер-синусоїда, §2.4).
+ */
+export const startPreview = (body) =>
+  request('/preview', { method: 'POST', body });
+
+/** DELETE /api/preview → {active:false} */
+export const stopPreview = () => request('/preview', { method: 'DELETE' });
+
+/** GET /api/preview → {active, preview_id?, source?} */
+export const getPreviewState = () => request('/preview');
+
 /** GET /api/editor/state → {exists, saved_at?, state?} — сцена з experiments/editor/ */
 export const getEditorState = () => request('/editor/state');
 

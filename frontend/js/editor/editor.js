@@ -12,13 +12,14 @@ import {
   listPredators, savePredator, loadPredator, deletePredator, ApiError,
 } from '../api.js';
 import {
-  clone, stateChanged, saveToProject, resetProjectState, saveAsPreset, migrateEnvironment,
+  clone, stateChanged, saveAsPreset, migrateEnvironment, defaultState, DEFAULTS,
   applyExperimentForm, normalizeCreature, invalidateCreatureCache,
   presetCreatures, localTime,
 } from '../state.js';
 
 import {
   makeView, withWorld, themeColors, grid, polygon, screenText, hexAlpha,
+  creatureReach,
 } from '../render/shapes.js';
 import {
   initCreaturePanel, syncCreaturePanel, drawCreature, renderCreatureThumb,
@@ -40,6 +41,14 @@ import {
 
 const $ = (s) => document.querySelector(s);
 
+/** Межі зуму колесом. Верхня висока: істота радіусом 0.3 має бути розгляданою. */
+const ZOOM_MIN = 3;
+const ZOOM_MAX = 400;
+/** Поле по периметру при вписуванні сутності: 1.0 = впритул до країв. */
+const FIT_MARGIN = 1.35;
+/** Запас при вписуванні світу, од. світу (сцена велика — множник там зайвий). */
+const WORLD_PAD = 4;
+
 const TOOL_HINTS = {
   creature: 'Істота: клік по периметру тіла додає кінцівку (Ctrl/⌘ — вибір кількох); '
     + 'форму тіла задають слайдери або «Малювати полігон»',
@@ -58,9 +67,15 @@ export function initEditor(state) {
   const colors = themeColors();
 
   const cam = { x: 0, y: 0, scale: 16 };
-  let fitScale = 16;          // масштаб, за якого світ вписано у вікно = 1×
+  let fitScale = 16;          // масштаб, за якого вміст вписано у вікно = 1×
   let showGrid = true;
   let cssW = 1, cssH = 1;
+  /** Кадр, у якому користувач лишив кожен режим: масштаби сутності й світу
+   *  відрізняються на два порядки, тож одна спільна камера тут не працює. */
+  const camByTool = {};
+  /** Прихована вкладка має нульовий канвас — вписувати можна лише після
+   *  першого справжнього вимірювання, інакше масштаб вийде безглуздий. */
+  let fitted = false;
 
   const api = {
     state,
@@ -91,15 +106,43 @@ export function initEditor(state) {
     canvas.width = Math.round(cssW * dpr);
     canvas.height = Math.round(cssH * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    render();
+    if (!fitted && measured()) resetCamera();
+    else render();
   }
 
-  function resetCamera() {
+  const measured = () => cssW > 2 && cssH > 2;
+
+  /**
+   * Що саме треба вписати у вікно — за поточним режимом. Кожен режим малює
+   * лише свою сутність (§10.2), тож і вписувати треба її: істота розміром
+   * 2–4 од. у кадрі світу 60×40 виглядає як точка.
+   */
+  function fitExtent() {
+    if (api.tool === 'creature') {
+      const r = (creatureReach(state.creature) || 1) * FIT_MARGIN;
+      return { w: r * 2, h: r * 2 };
+    }
+    if (api.tool === 'predator') {
+      const pred = state.predator ?? {};
+      const r = Math.max(pred.r_detect ?? 0, pred.r_aura ?? 0,
+        pred.r_catch ?? 0, pred.r_body ?? 0, 1) * FIT_MARGIN;
+      return { w: r * 2, h: r * 2 };
+    }
     const { width, height } = state.environment.world;
+    return { w: width + WORLD_PAD, h: height + WORLD_PAD };
+  }
+
+  /** «Скинути камеру»: центр координат + вписана сутність поточного режиму. */
+  function resetCamera() {
+    const { w, h } = fitExtent();
     cam.x = 0;
     cam.y = 0;
-    cam.scale = Math.min(cssW / (width + 4), cssH / (height + 4)) || 16;
+    const fit = Math.min(cssW / w, cssH / h);
+    cam.scale = Number.isFinite(fit) && fit > 0
+      ? Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, fit))
+      : 16;
     fitScale = cam.scale;
+    fitted = measured();
     render();
   }
 
@@ -149,6 +192,8 @@ export function initEditor(state) {
 
   // --- Панелі -------------------------------------------------------------
   function setTool(tool) {
+    const prev = api.tool;
+    if (prev !== tool) camByTool[prev] = { x: cam.x, y: cam.y, scale: cam.scale, fitScale };
     api.tool = tool;
     api.hover = null;
     api.drag = null;
@@ -159,6 +204,17 @@ export function initEditor(state) {
     setHint(tool === 'scene' ? sceneHint() : TOOL_HINTS[tool]);
     syncLibraryBar();
     announceTool();
+    // Повертаємось туди, де користувач лишив цей режим; уперше — вписуємо
+    if (prev !== tool) {
+      const saved = camByTool[tool];
+      if (saved) {
+        cam.x = saved.x; cam.y = saved.y; cam.scale = saved.scale;
+        fitScale = saved.fitScale;
+      } else {
+        resetCamera();
+        return;
+      }
+    }
     render();
   }
 
@@ -292,7 +348,7 @@ export function initEditor(state) {
     const rect = canvas.getBoundingClientRect();
     const view = makeView(cam, cssW, cssH);
     const before = view.toWorld(e.clientX - rect.left, e.clientY - rect.top);
-    cam.scale = Math.min(140, Math.max(3, cam.scale * Math.exp(-e.deltaY * 0.0015)));
+    cam.scale = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, cam.scale * Math.exp(-e.deltaY * 0.0015)));
     const after = makeView(cam, cssW, cssH).toWorld(e.clientX - rect.left, e.clientY - rect.top);
     cam.x += before.x - after.x;        // світова точка під курсором не рухається
     cam.y += before.y - after.y;
@@ -439,6 +495,23 @@ export function initEditor(state) {
 
   $('#btn-validate').addEventListener('click', () => doValidate());
 
+  /**
+   * «Тест-заплив»: поточна чернетка (істота + сцена) — у live-прев'ю (§2.4).
+   * Редактор не знає ні про вкладки, ні про WebSocket: він лише оголошує
+   * подію, а вкладку перемикає `app.js`, канал веде `simulation.js`.
+   */
+  $('#btn-test-swim').addEventListener('click', async () => {
+    const check = await doValidate({ quiet: true });
+    if (!check.valid) {
+      message(`Істота не валідна, заплив неможливий:\n• ${check.errors.join('\n• ')}`, 'err');
+      return;
+    }
+    window.dispatchEvent(new CustomEvent('testswim', {
+      detail: { creature: clone(state.creature), environment: clone(state.environment) },
+    }));
+    message('Тест-заплив запущено — дивись на вкладці «Симуляція»', 'ok');
+  });
+
   $('#btn-save-scene').addEventListener('click', () => {
     download('scene.environment.json', state.environment);
     message('EnvironmentConfig збережено', 'ok');
@@ -554,6 +627,74 @@ export function initEditor(state) {
       ul.innerHTML = `<li class="muted" style="border-style:dashed">${
         kind === 'predators' ? 'хижаків' : 'істот'} ще немає — збережи поточного</li>`;
     }
+    prependCreateRow(ul, kind,
+      kind === 'predators' ? 'Створити нового хижака' : 'Створити нову істоту');
+  }
+
+  /** Вільна назва на кшталт «нова-істота», «нова-істота-2». */
+  function freeName(base, taken) {
+    if (!taken.includes(base)) return base;
+    for (let i = 2; i < 999; i++) if (!taken.includes(`${base}-${i}`)) return `${base}-${i}`;
+    return `${base}-${Date.now()}`;
+  }
+
+  /** Чи є що втрачати: сутність відрізняється від збереженої в бібліотеці копії. */
+  function entityDirty(kind) {
+    if (kind === 'predators') {
+      const saved = inLibrary.predator?.payload ?? DEFAULTS.predator;
+      return JSON.stringify(predatorParams(api.state.predator)) !== JSON.stringify(predatorParams(saved));
+    }
+    if (kind === 'presets') {
+      const env = state.environment;
+      return Boolean(env.obstacles.length || env.predators.length || env.spawns.length);
+    }
+    if (!state.creature.limbs.length) return false;
+    return JSON.stringify(state.creature) !== JSON.stringify(inLibrary.creature?.payload);
+  }
+
+  /**
+   * «Створити нову/нового» — чиста сутність поточного виду. Чіпає **лише** її:
+   * нова істота не скидає сцену, нова сцена не чіпає істоту (§10.2 — три
+   * незалежні сутності).
+   */
+  function createNew(kind) {
+    const what = { creatures: 'істоту', predators: 'хижака', presets: 'сцену' }[kind];
+    if (entityDirty(kind)
+      && !window.confirm(`Поточну ${what} не збережено в бібліотеку. Створити нову й втратити зміни?`)) {
+      return;
+    }
+    const taken = libraryRows.map((m) => m.name);
+    const fresh = defaultState();
+
+    if (kind === 'predators') {
+      applyPredatorParams(api, freeName('новий-хижак', taken), clone(DEFAULTS.predator));
+      inLibrary.predator = null;
+    } else if (kind === 'presets') {
+      state.environment = fresh.environment;
+      resetSceneSelection();
+      $('#preset-name').value = '';
+    } else {
+      state.creature = fresh.creature;
+      state.creature.name = freeName('нова-істота', taken);
+      state.validation = null;
+      clearLimbSelection(api);
+      inLibrary.creature = null;
+      showValidation(null);
+    }
+
+    $('#lib-menu').hidden = true;
+    refresh();
+    resetCamera();
+    message(`Створено нову ${what} — заповни й збережи в бібліотеку`, 'ok');
+  }
+
+  /** Рядок «+ Створити…» першим у списку: саме там його шукають. */
+  function prependCreateRow(ul, kind, label) {
+    const li = document.createElement('li');
+    li.className = 'create';
+    li.innerHTML = `<span class="plus">+</span><span class="grow">${label}</span>`;
+    li.addEventListener('click', (e) => { e.stopPropagation(); createNew(kind); });
+    ul.prepend(li);
   }
 
   async function applyLibraryItem(name) {
@@ -697,6 +838,7 @@ export function initEditor(state) {
       data = await listPresets();
     } catch (e) {
       ul.innerHTML = '<li class="muted" style="border-style:dashed">список недоступний</li>';
+      prependCreateRow(ul, 'presets', 'Створити нову сцену');
       return;
     }
     ul.innerHTML = '';
@@ -722,6 +864,7 @@ export function initEditor(state) {
       li.addEventListener('click', () => applyPreset(meta.name));
       ul.appendChild(li);
     }
+    prependCreateRow(ul, 'presets', 'Створити нову сцену');
     $('#preset-hint').textContent = data.presets.length
       ? `Збережено ${data.presets.length} із ${data.limit}. Клік по рядку завантажує варіант.`
       : 'Варіантів ще немає: збережи поточну сцену під назвою.';
@@ -760,23 +903,6 @@ export function initEditor(state) {
   });
 
   $('#preset-refresh').addEventListener('click', () => syncPresetList());
-
-  $('#btn-save-project').addEventListener('click', async () => {
-    const res = await saveToProject();
-    message(res
-      ? 'Робочий стан збережено у проєкті (experiments/editor/last_session.json)'
-      : 'Не вдалося зберегти: сервер недоступний', res ? 'ok' : 'err');
-  });
-
-  $('#btn-reset-project').addEventListener('click', async () => {
-    if (!window.confirm('Видалити збережений робочий стан і почати з чистого? '
-      + 'Бібліотеки істот, хижаків і сцен не постраждають.')) return;
-    await resetProjectState();
-    resetSceneSelection();
-    refresh();
-    resetCamera();
-    message('Збережений робочий стан видалено, редактор скинуто до типових значень', 'ok');
-  });
 
   window.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;

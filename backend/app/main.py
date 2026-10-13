@@ -1,7 +1,8 @@
-"""FastAPI-застосунок: REST + (пізніше) WebSocket-канали.
+"""FastAPI-застосунок: REST + WebSocket-канали (§9.4–9.6).
 
-Етап 1 (PLAN.md): лише `POST /api/creature/validate` та заглушка
-`GET /api/simulation/status`. Решта ендпоінтів §9.4 додається на етапах 2–5.
+Етапи 1–2: валідація сутностей, бібліотеки конструктора, живий перегляд
+(`POST /api/preview` + `/ws/live`). Керування ГА (`/api/simulation/*`,
+`/ws/metrics`) з'являється на етапі 3.
 """
 
 from __future__ import annotations
@@ -9,13 +10,14 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import config as C
+from .core.world import World
 from .schemas import (
     CreatureConfig,
     CreatureList,
@@ -23,17 +25,21 @@ from .schemas import (
     CreatureValidationResponse,
     EditorState,
     EditorStateResponse,
+    EnvironmentConfig,
     PredatorLibrary,
     PredatorMeta,
     PredatorParams,
     PredatorValidationResponse,
     PresetList,
     PresetMeta,
+    PreviewRequest,
+    PreviewResponse,
+    PreviewState,
     SavedCreature,
     SavedPredator,
     SimulationStatus,
 )
-from .services import editor_store
+from .services import editor_store, live_stream
 
 app = FastAPI(
     title="Adaptive EvoSim API",
@@ -133,7 +139,90 @@ async def validate_predator(payload: dict) -> PredatorValidationResponse:
 @app.get("/api/simulation/status", response_model=SimulationStatus)
 async def simulation_status() -> SimulationStatus:
     """Заглушка етапу 1: справжній стан з'явиться разом із SimulationManager (етап 3)."""
-    return SimulationStatus(state="STOPPED")
+    return SimulationStatus(
+        state="STOPPED",
+        mode="live" if live_stream.manager.active else "headless",
+    )
+
+
+# --- Живий перегляд (§9.4, §9.5) -------------------------------------------
+@app.post("/api/preview", response_model=PreviewResponse)
+async def start_preview(payload: PreviewRequest) -> PreviewResponse:
+    """Стартує live-епізод; кадри йдуть у `/ws/live`.
+
+    Етап 2 реалізує лише `source:"demo"` — сцену з тестовим контролером-
+    синусоїдою (§2.4). Решта джерел потребують геному й з'являться з ГА.
+    """
+    if payload.source != "demo":
+        raise StarletteHTTPException(
+            status_code=status.HTTP_501_NOT_IMPLEMENTED,
+            detail=f"source='{payload.source}' з'явиться на етапі "
+                   f"{'3' if payload.source in ('genome', 'best') else '4'}; "
+                   f"зараз доступний лише 'demo'",
+        )
+
+    creature = payload.creature
+    environment = payload.environment or EnvironmentConfig()
+
+    def make_world() -> World:
+        return World(
+            creature, environment, seed=payload.seed,
+            episode_seconds=payload.episode_seconds,
+            spawn_index=payload.spawn_index,
+        )
+
+    session = live_stream.PreviewSession(
+        live_stream.manager.hub, make_world,
+        source=payload.source, speed=payload.speed, loop=payload.loop,
+    )
+    await live_stream.manager.start(session)
+    return PreviewResponse(
+        preview_id=session.preview_id,
+        source=payload.source,
+        n_joints=creature.n_joints,
+        n_in=creature.n_in,
+        genome_size=creature.genome_size,
+        episode_seconds=payload.episode_seconds,
+    )
+
+
+@app.delete("/api/preview", response_model=PreviewState)
+async def stop_preview() -> PreviewState:
+    """Зупиняє прев'ю; headless-навчання (етап 3) це не чіпає."""
+    await live_stream.manager.stop()
+    return PreviewState(active=False)
+
+
+@app.get("/api/preview", response_model=PreviewState)
+async def preview_state() -> PreviewState:
+    session = live_stream.manager.current
+    return PreviewState(
+        active=session is not None,
+        preview_id=session.preview_id if session else None,
+        source=session.source if session else None,
+    )
+
+
+@app.websocket("/ws/live")
+async def ws_live(websocket: WebSocket) -> None:
+    """Канал кадрів (§9.5).
+
+    Нового клієнта одразу наздоганяє збережений пакет `scene`: статика сцени
+    в кадрах не повторюється, тож без цього не було б що малювати.
+    """
+    await websocket.accept()
+    hub = live_stream.manager.hub
+    queue = hub.subscribe()
+    try:
+        if hub.scene is not None:
+            await websocket.send_json(hub.scene)
+        while True:
+            packet = await queue.get()
+            await websocket.send_json(packet)
+    except WebSocketDisconnect:
+        pass
+    finally:
+        hub.unsubscribe(queue)
 
 
 # --- Стан конструктора: зберігається у проєкті (experiments/editor/) --------
