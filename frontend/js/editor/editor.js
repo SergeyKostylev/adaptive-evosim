@@ -21,6 +21,7 @@ import {
   makeView, withWorld, themeColors, grid, polygon, screenText, hexAlpha,
   creatureReach,
 } from '../render/shapes.js';
+import { renderSceneThumb } from '../render/renderer.js';
 import {
   initCreaturePanel, syncCreaturePanel, drawCreature, renderCreatureThumb,
   handleBodyClick, handleLimbClick, clearLimbSelection, selectedLimbIndices,
@@ -255,6 +256,10 @@ export function initEditor(state) {
   }
 
   function refresh() {
+    const sceneInput = $('#scene-name');
+    if (sceneInput && sceneInput.value !== (state.sceneName ?? '')) {
+      sceneInput.value = state.sceneName ?? '';
+    }
     syncLibraryBar();
     syncDirtyMarks();
     syncCreaturePanel(api);
@@ -533,9 +538,14 @@ export function initEditor(state) {
   // і хижаків у режимі «Хижак». У «Сцені» він ховається — там свої списки.
   let libraryRows = [];
   /** Останнє, що поклали/взяли з бібліотеки — для позначки «є зміни». */
-  const inLibrary = { creature: null, predator: null };
+  const inLibrary = { creature: null, predator: null, scene: null };
 
-  const libraryKind = () => (api.tool === 'predator' ? 'predators' : 'creatures');
+  //: Той самий список над полотном обслуговує всі три бібліотеки — яку саме,
+  //  вирішує поточний режим. Ховати його в «Сцені» було несиметрично:
+  //  створення й видалення сутності користувач шукає там, де й для решти.
+  const LIBRARY_BY_TOOL = { creature: 'creatures', predator: 'predators', scene: 'presets' };
+  const libraryKind = () => LIBRARY_BY_TOOL[api.tool] ?? 'creatures';
+  const ENTITY_WORD = { creatures: 'істоту', predators: 'хижака', presets: 'сцену' };
 
   /**
    * Сутності зберігаються окремо, тож треба бачити, де саме є незбережені
@@ -559,19 +569,23 @@ export function initEditor(state) {
     };
     mark('#creature-dirty', state.creature, inLibrary.creature, 'істоти');
     mark('#pred-dirty', predatorParams(api.state.predator), inLibrary.predator, 'хижака');
+    mark('#scene-dirty', state.environment, inLibrary.scene, 'сцени');
   }
 
   function syncLibraryBar() {
     const bar = $('#creature-lib');
     if (!bar) return;
-    bar.hidden = api.tool === 'scene';
-    if (bar.hidden) { $('#lib-menu').hidden = true; return; }
+    bar.hidden = false;
+    const thumb = $('#lib-current-thumb');
     if (api.tool === 'predator') {
       $('#lib-current-name').textContent = api.state.predatorName || 'хижак';
-      renderPredatorThumb($('#lib-current-thumb'), api.state.predator, colors);
+      renderPredatorThumb(thumb, api.state.predator, colors);
+    } else if (api.tool === 'scene') {
+      $('#lib-current-name').textContent = state.sceneName || 'без назви';
+      renderSceneThumb(thumb, state.environment, colors, { size: 30 });
     } else {
       $('#lib-current-name').textContent = state.creature.name || 'без назви';
-      renderCreatureThumb($('#lib-current-thumb'), state.creature, colors);
+      renderCreatureThumb(thumb, state.creature, colors);
     }
   }
 
@@ -579,8 +593,10 @@ export function initEditor(state) {
     const ul = $('#lib-list');
     const kind = libraryKind();
     try {
-      const data = kind === 'predators' ? await listPredators() : await listCreatures();
-      libraryRows = kind === 'predators' ? data.predators : data.creatures;
+      const data = kind === 'predators' ? await listPredators()
+        : kind === 'presets' ? await listPresets()
+          : await listCreatures();
+      libraryRows = data.predators ?? data.presets ?? data.creatures;
       $('#lib-count').textContent = `${libraryRows.length}`;
     } catch {
       ul.innerHTML = '<li class="muted" style="border-style:dashed">бібліотека недоступна</li>';
@@ -594,13 +610,16 @@ export function initEditor(state) {
       thumb.className = 'thumb';
       li.appendChild(thumb);
       if (kind === 'predators') renderPredatorThumb(thumb, meta.predator, colors, { size: 34 });
+      else if (kind === 'presets') renderSceneThumb(thumb, meta.environment, colors, { size: 34 });
       else renderCreatureThumb(thumb, meta.creature, colors, { size: 34 });
 
       const text = document.createElement('span');
       text.className = 'grow';
       const sub = kind === 'predators'
         ? `r ${meta.r_body} · аура ${meta.r_aura} · погоня ${meta.v_chase}`
-        : `${meta.limbs} кінц. · ${meta.segments} сегм.`;
+        : kind === 'presets'
+          ? `${meta.obstacles} переш. · ${meta.waypoints} точок маршрутів`
+          : `${meta.limbs} кінц. · ${meta.segments} сегм.`;
       text.innerHTML = `<span>${meta.name}</span><span class="meta">${sub}`
         + `${meta.saved_at ? ' · ' + localTime(meta.saved_at) : ''}</span>`;
       li.appendChild(text);
@@ -612,7 +631,9 @@ export function initEditor(state) {
         e.stopPropagation();
         if (!window.confirm(`Видалити «${meta.name}» з бібліотеки?`)) return;
         try {
-          await (kind === 'predators' ? deletePredator(meta.name) : deleteCreature(meta.name));
+          await (kind === 'predators' ? deletePredator(meta.name)
+            : kind === 'presets' ? deletePreset(meta.name)
+              : deleteCreature(meta.name));
           message(`«${meta.name}» видалено з бібліотеки`, 'ok');
         } catch (err) {
           message(`Не вдалося видалити: ${err.message}`, 'err');
@@ -624,11 +645,15 @@ export function initEditor(state) {
       ul.appendChild(li);
     }
     if (!libraryRows.length) {
-      ul.innerHTML = `<li class="muted" style="border-style:dashed">${
-        kind === 'predators' ? 'хижаків' : 'істот'} ще немає — збережи поточного</li>`;
+      const what = { predators: 'хижаків', presets: 'сцен', creatures: 'істот' }[kind];
+      ul.innerHTML = `<li class="muted" style="border-style:dashed">${what}`
+        + ' ще немає — збережи поточну</li>';
     }
-    prependCreateRow(ul, kind,
-      kind === 'predators' ? 'Створити нового хижака' : 'Створити нову істоту');
+    prependCreateRow(ul, kind, {
+      predators: 'Створити нового хижака',
+      presets: 'Створити нову сцену',
+      creatures: 'Створити нову істоту',
+    }[kind]);
   }
 
   /** Вільна назва на кшталт «нова-істота», «нова-істота-2». */
@@ -658,7 +683,7 @@ export function initEditor(state) {
    * незалежні сутності).
    */
   function createNew(kind) {
-    const what = { creatures: 'істоту', predators: 'хижака', presets: 'сцену' }[kind];
+    const what = ENTITY_WORD[kind];
     if (entityDirty(kind)
       && !window.confirm(`Поточну ${what} не збережено в бібліотеку. Створити нову й втратити зміни?`)) {
       return;
@@ -671,8 +696,9 @@ export function initEditor(state) {
       inLibrary.predator = null;
     } else if (kind === 'presets') {
       state.environment = fresh.environment;
+      state.sceneName = freeName('нова-сцена', taken);
+      inLibrary.scene = null;
       resetSceneSelection();
-      $('#preset-name').value = '';
     } else {
       state.creature = fresh.creature;
       state.creature.name = freeName('нова-істота', taken);
@@ -699,6 +725,11 @@ export function initEditor(state) {
 
   async function applyLibraryItem(name) {
     try {
+      if (libraryKind() === 'presets') {
+        $('#lib-menu').hidden = true;
+        await applyPreset(name);
+        return;
+      }
       if (libraryKind() === 'predators') {
         const res = await loadPredator(name);
         applyPredatorParams(api, name, res.predator);
@@ -732,8 +763,11 @@ export function initEditor(state) {
     const menu = $('#lib-menu');
     menu.hidden = !menu.hidden;
     if (!menu.hidden) {
-      $('#lib-save-name').value = libraryKind() === 'predators'
-        ? (api.state.predatorName ?? '') : (state.creature.name ?? '');
+      $('#lib-save-name').value = {
+        predators: api.state.predatorName ?? '',
+        presets: state.sceneName ?? '',
+        creatures: state.creature.name ?? '',
+      }[libraryKind()];
       syncLibrary();
     }
   });
@@ -748,6 +782,20 @@ export function initEditor(state) {
    */
   async function saveCurrentEntity(kind, name) {
     if (!name) { message('Вкажи назву', 'err'); return false; }
+    if (kind === 'presets') {
+      try {
+        const meta = await saveAsPreset(name);
+        state.sceneName = meta.name;
+        inLibrary.scene = { name: meta.name, payload: clone(state.environment) };
+        message(`Сцену «${meta.name}» збережено в бібліотеку`, 'ok');
+        syncLibrary();
+        refresh();
+        return true;
+      } catch (err) {
+        message(`Не вдалося зберегти: ${err.message}`, 'err');
+        return false;
+      }
+    }
     if (kind === 'predators') {
       if (!radiiOrderOk(api.state.predator)) {
         message('Хижак не валідний: має виконуватись r_catch ≤ r_aura ≤ r_detect', 'err');
@@ -791,8 +839,9 @@ export function initEditor(state) {
   $('#lib-save').addEventListener('click', (e) => {
     e.stopPropagation();
     const kind = libraryKind();
-    const name = $('#lib-save-name').value.trim()
-      || (kind === 'predators' ? api.state.predatorName : state.creature.name);
+    const fallback = { predators: api.state.predatorName, presets: state.sceneName,
+                       creatures: state.creature.name }[kind];
+    const name = $('#lib-save-name').value.trim() || fallback;
     saveCurrentEntity(kind, name);
   });
 
@@ -816,6 +865,11 @@ export function initEditor(state) {
 
   $('#lib-export').addEventListener('click', (e) => {
     e.stopPropagation();
+    if (libraryKind() === 'presets') {
+      download(`${state.sceneName || 'scene'}.environment.json`, state.environment);
+      message('EnvironmentConfig збережено у файл', 'ok');
+      return;
+    }
     if (libraryKind() === 'predators') {
       download(`${api.state.predatorName || 'predator'}.predator.json`,
         { predator: predatorParams(api.state.predator) });
@@ -826,50 +880,11 @@ export function initEditor(state) {
   });
   $('#lib-import').addEventListener('click', (e) => {
     e.stopPropagation();
-    loadTarget = libraryKind() === 'predators' ? 'predator' : 'creature';
+    loadTarget = { predators: 'predator', presets: 'scene', creatures: 'creature' }[libraryKind()];
     fileInput.click();
   });
 
-  /** Список збережених варіантів + джерела для розстановки істот. */
-  async function syncPresetList() {
-    const ul = $('#preset-list');
-    let data;
-    try {
-      data = await listPresets();
-    } catch (e) {
-      ul.innerHTML = '<li class="muted" style="border-style:dashed">список недоступний</li>';
-      prependCreateRow(ul, 'presets', 'Створити нову сцену');
-      return;
-    }
-    ul.innerHTML = '';
-    for (const meta of data.presets) {
-      const li = document.createElement('li');
-      li.innerHTML = `<span class="grow">${meta.name} · ${meta.limbs} кінц. · `
-        + `${meta.obstacles} переш. · ${meta.saved_at ? localTime(meta.saved_at) : ''}</span>`;
-      const del = document.createElement('button');
-      del.textContent = '\u2715';
-      del.title = 'Видалити варіант';
-      del.addEventListener('click', async (e) => {
-        e.stopPropagation();
-        if (!window.confirm(`Видалити варіант «${meta.name}»?`)) return;
-        try {
-          await deletePreset(meta.name);
-          message(`Варіант «${meta.name}» видалено`, 'ok');
-        } catch (err) {
-          message(`Не вдалося видалити: ${err.message}`, 'err');
-        }
-        syncPresetList();
-      });
-      li.appendChild(del);
-      li.addEventListener('click', () => applyPreset(meta.name));
-      ul.appendChild(li);
-    }
-    prependCreateRow(ul, 'presets', 'Створити нову сцену');
-    $('#preset-hint').textContent = data.presets.length
-      ? `Збережено ${data.presets.length} із ${data.limit}. Клік по рядку завантажує варіант.`
-      : 'Варіантів ще немає: збережи поточну сцену під назвою.';
-  }
-
+  /** Завантажує збережену сцену в редактор. */
   async function applyPreset(name) {
     try {
       const res = await loadPreset(name);
@@ -878,31 +893,28 @@ export function initEditor(state) {
       if (saved.environment) state.environment = migrateEnvironment(saved.environment);
       applyExperimentForm(saved);
       invalidateCreatureCache();   // морфології у варіанті можуть бути іншими
+      state.sceneName = name;
+      inLibrary.scene = { name, payload: clone(state.environment) };
       resetSceneSelection();
       refresh();
       resetCamera();
-      message(`Завантажено варіант «${name}»`, 'ok');
+      message(`Завантажено сцену «${name}»`, 'ok');
       await doValidate({ quiet: true });
     } catch (e) {
       message(`Не вдалося завантажити «${name}»: ${e.message}`, 'err');
     }
   }
 
-  $('#preset-save').addEventListener('click', async () => {
-    const input = $('#preset-name');
-    const name = input.value.trim();
-    if (!name) { message('Вкажи назву варіанта', 'err'); input.focus(); return; }
-    try {
-      const meta = await saveAsPreset(name);
-      message(`Варіант «${meta.name}» збережено`, 'ok');
-      input.value = '';
-      syncPresetList();
-    } catch (e) {
-      message(`Не вдалося зберегти: ${e.message}`, 'err');
-    }
-  });
+  // Сцена зберігається своєю кнопкою — так само, як істота й хижак
+  $('#scene-save-lib').addEventListener('click', () =>
+    saveCurrentEntity('presets', $('#scene-name').value.trim()));
 
-  $('#preset-refresh').addEventListener('click', () => syncPresetList());
+  $('#scene-name').addEventListener('input', (e) => {
+    state.sceneName = e.target.value.trim();
+    syncLibraryBar();
+    syncDirtyMarks();
+    stateChanged();
+  });
 
   window.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
@@ -941,7 +953,6 @@ export function initEditor(state) {
   resetCamera();
   setTool('creature');
   refresh();
-  syncPresetList();
 
   return api;
 }

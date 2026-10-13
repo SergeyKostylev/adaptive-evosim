@@ -380,6 +380,8 @@ class EditorState(_Model):
     #: Сутність «хижак», що редагується (параметри без маршруту)
     predator: dict | None = None
     predator_name: str | None = Field(default=None, max_length=64)
+    #: Назва сцени в бібліотеці — симетрично до `predator_name`
+    scene_name: str | None = Field(default=None, max_length=64)
     ga: dict | None = None
     fitness_weights: dict | None = None
     saved_at: str | None = None

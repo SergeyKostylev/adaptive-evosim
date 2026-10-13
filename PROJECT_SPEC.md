@@ -530,7 +530,7 @@ live-перегляду. Еволюціонує завжди морфологі�
 | `GET` | `/api/experiments` | → `{runs:[{run_id, name, created_at, generations_done, best_fitness, state}]}` |
 | `GET` | `/api/experiments/{run_id}/export?format=csv\|pdf\|png` | → файл (CSV метрик або PDF/PNG графіків) |
 | `GET` | `/api/editor/state` | → `{exists, saved_at?, state?}` — остання сцена конструктора |
-| `PUT` | `/api/editor/state` | `{creature, environment, ga?, fitness_weights?}` → те саме + `saved_at`; `413`, якщо > 1 МіБ |
+| `PUT` | `/api/editor/state` | `{creature, environment, predator?, predator_name?, scene_name?, ga?, fitness_weights?}` → те саме + `saved_at`; `413`, якщо > 1 МіБ |
 | `DELETE` | `/api/editor/state` | → `{exists:false}` — прибирає збережену сцену |
 | `GET` | `/api/editor/presets` | → `{presets:[{name, saved_at, creature_name, limbs, segments, obstacles, waypoints, bytes, environment}], limit}` (`environment` — для мініатюри) |
 | `PUT` | `/api/editor/presets/{name}` | тіло як у `/api/editor/state` → `PresetMeta`; `400` — недопустима назва, `409` — ліміт (50) |
@@ -575,6 +575,11 @@ live-перегляду. Еволюціонує завжди морфологі�
 
 Етапність: `"demo"` реалізується на етапі 2, `"genome"`/`"best"` — на етапі 3,
 `"live_training"` — на етапі 4. Нереалізоване джерело повертає `501`.
+
+Поля `predator_name` і `scene_name` — назви, під якими відредаговані хижак і
+сцена востаннє лежали в бібліотеці. Вони потрібні, щоб після перезавантаження
+сторінки список над полотном показував ту саму сутність і щоб позначка «є
+зміни, не збережені в бібліотеці» мала з чим порівнювати.
 
 **Стан конструктора** (`/api/editor/state`) зберігається в `experiments/editor/last_session.json`,
 щоб перезавантаження сторінки відкривало ту саму сцену, іменовані варіанти сцен —

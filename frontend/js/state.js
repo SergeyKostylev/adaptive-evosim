@@ -41,6 +41,8 @@ export const defaultState = () => ({
   /** Сутність «хижак», що зараз редагується (без маршруту). */
   predator: clone(DEFAULTS.predator),
   predatorName: 'хижак-1',
+  /** Назва сцени в бібліотеці — симетрично до `predatorName`. */
+  sceneName: 'сцена-1',
   environment: {
     world: clone(DEFAULTS.world),
     fluid: clone(DEFAULTS.fluid),
@@ -196,6 +198,7 @@ export function applyExperimentForm(saved) {
     state.predator = { ...clone(DEFAULTS.predator), ...saved.predator };
     state.predatorName = saved.predator_name ?? state.predatorName;
   }
+  if (saved?.scene_name) state.sceneName = saved.scene_name;
   if (saved?.ga) {
     for (const f of GA_FIELDS) if (saved.ga[f] != null) $(`#ga-${f}`).value = saved.ga[f];
     if (saved.ga.name) $('#ga-name').value = saved.ga.name;
@@ -233,6 +236,7 @@ function editorSnapshot() {
     environment: exp.environment,
     predator: clone(state.predator),
     predator_name: state.predatorName,
+    scene_name: state.sceneName,
     ga: { ...exp.ga, name: exp.name, seed: exp.seed },
     fitness_weights: exp.fitness_weights,
   };

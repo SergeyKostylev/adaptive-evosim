@@ -111,15 +111,33 @@ async function pollStatus() {
   }
 }
 
+/**
+ * Чи придатна відновлена морфологія до рендера. `/api/editor/state` навмисно
+ * зберігає чернетку **без** валідації (§9.4), тож обірваний або руками
+ * виправлений файл цілком може не мати `body` — і тоді перший же `drawCreature`
+ * валить редактор ще до того, як користувач щось побачить.
+ */
+function usableCreature(creature) {
+  return Boolean(creature && typeof creature === 'object'
+    && creature.body && typeof creature.body === 'object'
+    && Array.isArray(creature.limbs));
+}
+
 /** Збережена сцена має потрапити у стан ДО першого рендера редактора. */
 async function restoreSavedState() {
   try {
     const res = await getEditorState();
     if (!res?.exists || !res.state) return;
-    if (res.state.creature) state.creature = res.state.creature;
+    if (usableCreature(res.state.creature)) {
+      state.creature = res.state.creature;
+    } else if (res.state.creature) {
+      setSavedBadge('збережена істота пошкоджена — відкрито типову', 'err');
+    }
     if (res.state.environment) state.environment = migrateEnvironment(res.state.environment);
     applyExperimentForm(res.state);
-    setSavedBadge(`відкрито збережене ${localTime(res.saved_at)}`, 'ok');
+    if (usableCreature(res.state.creature)) {
+      setSavedBadge(`відкрито збережене ${localTime(res.saved_at)}`, 'ok');
+    }
   } catch {
     setSavedBadge('збережене недоступне', 'err');
   }

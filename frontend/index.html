@@ -245,24 +245,25 @@
         </div>
       </div>
 
-      <!-- Сцена: файли та варіанти (лише в режимах розстановки) -->
+      <!-- Сцена: збереження (симетрично до істоти й хижака) -->
       <div class="group" data-panel="scene">
-        <h3>Сцена</h3>
+        <h3>Сцена: збереження</h3>
+        <div class="row">
+          <label for="scene-name" title="назва у бібліотеці">Назва сцени</label>
+          <input type="text" id="scene-name" maxlength="64" value="сцена-1">
+        </div>
+        <div class="btns">
+          <button id="scene-save-lib" class="primary">Зберегти сцену</button>
+        </div>
+        <p class="small muted" style="margin:6px 0 0">Зберігається <b>лише сцена</b> — у свою
+          бібліотеку. Увесь список збережених сцен, створення нової та видалення —
+          у випадаючому списку над полотном.</p>
+        <p class="small mono" id="scene-dirty" style="margin:4px 0 0"></p>
+        <hr>
         <div class="btns">
           <button id="btn-save-scene">Зберегти у файл</button>
           <button id="btn-load-scene">Завантажити з файлу</button>
         </div>
-        <hr>
-        <div class="row">
-          <label for="preset-name">Варіант</label>
-          <input type="text" id="preset-name" maxlength="64" placeholder="напр. три хижаки">
-        </div>
-        <div class="btns">
-          <button id="preset-save" class="primary">Зберегти варіант</button>
-          <button id="preset-refresh">Оновити</button>
-        </div>
-        <ul class="list" id="preset-list"></ul>
-        <p class="small muted" id="preset-hint" style="margin-bottom:0">Клік по варіанту завантажує його.</p>
       </div>
 
       <!-- Повідомлення редактора (валідація, збереження, завантаження).
