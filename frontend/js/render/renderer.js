@@ -143,6 +143,17 @@ export function createPreview(canvas, colors) {
   const ctx = canvas.getContext('2d');
   const cam = { x: 0, y: 0, scale: 14 };
   let cssW = 1, cssH = 1, current = null, fitScale = 14;
+  // Вкладка на старті прихована → канвас має нульовий розмір, і підгонка за
+  // ним дала б безглуздий масштаб. Тому підганяємо при першому реальному
+  // вимірюванні, а не при першому малюванні.
+  let fitted = false;
+
+  const measured = () => cssW > 2 && cssH > 2;
+
+  function maybeFit() {
+    if (fitted || !measured() || !current) return;
+    fit();
+  }
 
   function resize() {
     const dpr = window.devicePixelRatio || 1;
@@ -152,6 +163,7 @@ export function createPreview(canvas, colors) {
     canvas.width = Math.round(cssW * dpr);
     canvas.height = Math.round(cssH * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    maybeFit();
     paint();
   }
 
@@ -159,8 +171,11 @@ export function createPreview(canvas, colors) {
     const world = config?.environment?.world ?? { width: 60, height: 40 };
     cam.x = 0;
     cam.y = 0;
-    cam.scale = Math.min(cssW / (world.width + 4), cssH / (world.height + 4)) || 14;
+    cam.scale = measured()
+      ? Math.min(cssW / (world.width + 4), cssH / (world.height + 4))
+      : 14;
     fitScale = cam.scale;
+    fitted = measured();
     paint();
   }
 
@@ -221,10 +236,9 @@ export function createPreview(canvas, colors) {
 
   return {
     draw(config) {
-      const first = current === null;
       current = config;
-      if (first) fit(config);
-      else paint();
+      maybeFit();
+      paint();
     },
     fit,
     zoom: () => cam.scale / fitScale,
