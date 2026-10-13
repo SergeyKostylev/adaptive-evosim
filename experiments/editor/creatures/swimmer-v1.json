@@ -1,0 +1,102 @@
+{
+  "creature": {
+    "name": "swimmer-v1",
+    "body": {
+      "shape": "circle",
+      "radius": 0.8,
+      "vertices": null,
+      "density": 1.0
+    },
+    "limbs": [
+      {
+        "attach_angle": 0.7854,
+        "rest_angle": 0.0,
+        "segments": [
+          {
+            "length": 0.39,
+            "width": 0.18,
+            "density": 1.0,
+            "joint": {
+              "angle_min": -1.2,
+              "angle_max": 1.2,
+              "motor_torque": 120.0
+            }
+          },
+          {
+            "length": 0.3,
+            "width": 0.126,
+            "density": 1.0,
+            "joint": {
+              "angle_min": -1.2,
+              "angle_max": 1.2,
+              "motor_torque": 120.0
+            }
+          }
+        ]
+      },
+      {
+        "attach_angle": -2.3562,
+        "rest_angle": 0.0,
+        "segments": [
+          {
+            "length": 0.39,
+            "width": 0.18,
+            "density": 1.0,
+            "joint": {
+              "angle_min": -1.2,
+              "angle_max": 1.2,
+              "motor_torque": 120.0
+            }
+          },
+          {
+            "length": 0.3,
+            "width": 0.126,
+            "density": 1.0,
+            "joint": {
+              "angle_min": -1.2,
+              "angle_max": 1.2,
+              "motor_torque": 120.0
+            }
+          }
+        ]
+      },
+      {
+        "attach_angle": -0.7854,
+        "rest_angle": 0.0,
+        "segments": [
+          {
+            "length": 0.7,
+            "width": 0.18,
+            "density": 1.0,
+            "joint": {
+              "angle_min": -1.2,
+              "angle_max": 1.2,
+              "motor_torque": 120.0
+            }
+          },
+          {
+            "length": 0.525,
+            "width": 0.126,
+            "density": 1.0,
+            "joint": {
+              "angle_min": -1.2,
+              "angle_max": 1.2,
+              "motor_torque": 120.0
+            }
+          },
+          {
+            "length": 0.394,
+            "width": 0.088,
+            "density": 1.0,
+            "joint": {
+              "angle_min": -1.2,
+              "angle_max": 1.2,
+              "motor_torque": 120.0
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "saved_at": "2026-10-13T20:03:48+00:00"
+}

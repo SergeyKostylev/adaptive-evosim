@@ -5,7 +5,17 @@ __pycache__/
 venv/
 .pytest_cache/
 *.egg-info/
+
+# Артефакти прогонів ГА — великі й відтворювані з config.json + сіду
 experiments/runs/*
-experiments/editor/*
 !experiments/runs/.gitkeep
-!experiments/editor/.gitkeep
+
+# Бібліотеки сутностей (creatures/, predators/, presets/) НЕ ігноруються:
+# це створені руками істоти, хижаки та сцени, і вони мусять переживати
+# видалення воркспейсу — єдиний спосіб цього досягти — тримати їх у git.
+# Ігноруємо лише службове:
+#   last_session.json — чернетка редактора, яку автозбереження перезаписує на
+#                       кожну правку (у git давало б постійний шум у diff);
+#   .tmp-*            — проміжні файли атомарного запису (tmp + os.replace).
+experiments/editor/last_session.json
+experiments/editor/**/.tmp-*
