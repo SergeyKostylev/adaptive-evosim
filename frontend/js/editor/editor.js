@@ -517,12 +517,6 @@ export function initEditor(state) {
     message('Тест-заплив запущено — дивись на вкладці «Симуляція»', 'ok');
   });
 
-  $('#btn-save-scene').addEventListener('click', () => {
-    download('scene.environment.json', state.environment);
-    message('EnvironmentConfig збережено', 'ok');
-  });
-  $('#btn-load-scene').addEventListener('click', () => { loadTarget = 'scene'; fileInput.click(); });
-
   function resetSceneSelection() {
     clearLimbSelection(api);
     api.sel.obstacle = state.environment.obstacles.length ? 0 : -1;
