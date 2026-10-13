@@ -95,10 +95,91 @@ export function handleRouteClick(api, p, { hitRadius = 0.8 } = {}) {
   api.refresh();
 }
 
+// --- Перетягування ----------------------------------------------------------
+/**
+ * Усі точки сцени, які можна тягнути мишею. Для перешкод це їхня позиція
+ * (у рухомих — обидві крайні точки маршруту).
+ */
+export function sceneHandles(api) {
+  const out = [];
+  spawns(api).forEach((sp, i) => out.push({
+    kind: 'spawn', index: i, x: sp.position[0], y: sp.position[1], r: 0.9,
+  }));
+  routes(api).forEach((route, i) => (route.waypoints ?? []).forEach(([x, y], k) => out.push({
+    kind: 'waypoint', index: i, sub: k, x, y, r: 0.5,
+  })));
+  (api.state.environment.obstacles ?? []).forEach((o, i) => {
+    if (o.type === 'moving_polygon') {
+      out.push({ kind: 'obstacle_p1', index: i, x: o.p1[0], y: o.p1[1], r: 0.7 });
+      out.push({ kind: 'obstacle_p2', index: i, x: o.p2[0], y: o.p2[1], r: 0.7 });
+    } else {
+      const r = o.type === 'static_circle' ? Math.max(0.7, o.radius * 0.6) : 0.7;
+      out.push({ kind: 'obstacle', index: i, x: o.position[0], y: o.position[1], r });
+    }
+  });
+  return out;
+}
+
+/** Найближча точка під курсором; об'єкти активного підрежиму мають перевагу. */
+export function findSceneHandle(api, p, pickRadius = 0.5) {
+  const preferred = { obstacle: 'obstacle', route: 'waypoint', spawn: 'spawn' }[api.sceneTool];
+  let best = null;
+  let bestScore = Infinity;
+  for (const h of sceneHandles(api)) {
+    const reach = Math.max(pickRadius, h.r);
+    const d = Math.hypot(p.x - h.x, p.y - h.y);
+    if (d > reach) continue;
+    const score = h.kind.startsWith(preferred) ? d - reach : d;
+    if (score < bestScore) { bestScore = score; best = h; }
+  }
+  return best;
+}
+
+/** Переміщує точку й робить її об'єкт вибраним (щоб панель показувала його). */
+export function moveSceneHandle(api, handle, x, y) {
+  const env = api.state.environment;
+  const pos = [round(x), round(y)];
+  switch (handle.kind) {
+    case 'spawn':
+      env.spawns[handle.index].position = pos;
+      api.sel.spawn = handle.index;
+      break;
+    case 'waypoint':
+      env.predators[handle.index].waypoints[handle.sub] = pos;
+      api.sel.predator = handle.index;
+      api.sel.waypoint = handle.sub;
+      break;
+    case 'obstacle':
+      env.obstacles[handle.index].position = pos;
+      api.sel.obstacle = handle.index;
+      break;
+    case 'obstacle_p1':
+      env.obstacles[handle.index].p1 = pos;
+      api.sel.obstacle = handle.index;
+      break;
+    case 'obstacle_p2':
+      env.obstacles[handle.index].p2 = pos;
+      api.sel.obstacle = handle.index;
+      break;
+    default:
+      return false;
+  }
+  return true;
+}
+
+export const handleTitle = (h) => ({
+  spawn: `точку появи ${h.index}`,
+  waypoint: `точку W${h.sub} маршруту М${h.index}`,
+  obstacle: `перешкоду ${h.index}`,
+  obstacle_p1: `початок руху перешкоди ${h.index}`,
+  obstacle_p2: `кінець руху перешкоди ${h.index}`,
+}[h.kind] ?? 'об\'єкт');
+
 // --- Малювання --------------------------------------------------------------
 export function drawScene(ctx, view, api, colors) {
   const labels = [];
   const subTool = api.sceneTool;
+  const active = api.drag ?? api.hover;
 
   // Маршрути з хижаками
   routes(api).forEach((route, i) => {
@@ -162,6 +243,15 @@ export function drawScene(ctx, view, api, colors) {
       size: selected ? 12 : 11, bg: hexAlpha(colors.bg, 0.7),
     });
   });
+
+  // Точка під курсором або та, яку тягнемо
+  if (active) {
+    circle(ctx, active.x, active.y, Math.max(active.r * 0.8, view.px(9)), {
+      stroke: hexAlpha(colors.accent2, api.drag ? 1 : 0.7),
+      lw: view.px(api.drag ? 2.4 : 1.6),
+      dash: api.drag ? null : [1, 1],
+    });
+  }
 
   return labels;
 }

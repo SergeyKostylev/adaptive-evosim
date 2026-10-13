@@ -136,14 +136,20 @@ async function fillSelects() {
     })),
   ]);
 
+  // Пояснюємо конкретикою: видно, хто саме бігає кожним маршрутом сцени
+  const env = picked.environment ?? state.environment;
+  const routeOwners = (env.predators ?? []).map((r, i) => `М${i}: ${r.preset ?? 'власні'}`);
   pickers.predator.fill([
-    { value: FROM_SCENE, label: 'як задано у сцені',
-      meta: 'параметри беруться з кожного маршруту', thumb: null },
-    { value: CURRENT, label: `${state.predatorName} (з редактора)`,
+    { value: FROM_SCENE, label: 'нічого не підміняти',
+      meta: routeOwners.length
+        ? `кожен маршрут зі своїм — ${routeOwners.join(' · ')}`
+        : 'у сцені ще немає маршрутів',
+      thumb: null },
+    { value: CURRENT, label: `підмінити на «${state.predatorName}» (з редактора)`,
       meta: `r ${state.predator.r_body} · аура ${state.predator.r_aura}`,
       thumb: predThumb(state.predator) },
     ...predators.predators.map((m) => ({
-      value: m.name, label: m.name,
+      value: m.name, label: `підмінити на «${m.name}»`,
       meta: `r ${m.r_body} · аура ${m.r_aura} · погоня ${m.v_chase}`,
       thumb: predThumb(m.predator),
     })),

@@ -171,7 +171,8 @@ export function drawObstacles(ctx, view, api, colors) {
 export function initObstaclePanel(api) {
   $('#obs-type').addEventListener('change', () => {
     api.draft.obs = null;
-    api.setTool('obstacle');
+    // Перешкоди — підрежим сцени, а не окремий інструмент (був до перебудови)
+    api.setSceneTool('obstacle');
     api.refresh();
   });
   $('#obs-finish').addEventListener('click', () => finishObstacle(api));

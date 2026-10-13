@@ -35,6 +35,7 @@ import {
 import {
   initScenePanel, syncScenePanel, syncRouteSources, drawScene,
   handleSpawnClick, handleRouteClick, addRoute,
+  findSceneHandle, moveSceneHandle, handleTitle,
 } from './scene_editor.js';
 
 const $ = (s) => document.querySelector(s);
@@ -65,6 +66,8 @@ export function initEditor(state) {
     state,
     tool: 'creature',
     sceneTool: 'obstacle',
+    hover: null,          // точка сцени під курсором
+    drag: null,           // точка, яку зараз тягнемо
     predatorLibrary: new Map(),      // назва → параметри (для маршрутів)
     predatorLibraryRows: [],
     // `limbs` — множина вибраних кінцівок, `limb` — активна (її показує форма)
@@ -149,6 +152,9 @@ export function initEditor(state) {
   // --- Панелі -------------------------------------------------------------
   function setTool(tool) {
     api.tool = tool;
+    api.hover = null;
+    api.drag = null;
+    canvas.style.cursor = '';
     document.querySelectorAll('[data-tool]').forEach((b) =>
       b.classList.toggle('active', b.dataset.tool === tool));
     applyPanelVisibility();
@@ -217,28 +223,60 @@ export function initEditor(state) {
     if (e.button === 2 || e.button === 1 || e.shiftKey) {
       panning = true;
       last = { x: e.clientX, y: e.clientY };
-    } else {
-      down = { x: e.clientX, y: e.clientY };
+      return;
     }
+    // У сцені ліва кнопка на наявній точці — перетягування, а не новий об'єкт
+    const handle = api.tool === 'scene' ? findSceneHandle(api, worldAt(e), pickRadius()) : null;
+    if (handle) {
+      api.drag = handle;
+      api.hover = handle;
+      canvas.style.cursor = 'grabbing';
+      setHint(`Перетягни ${handleTitle(handle)} · Alt — без прилипання до сітки`);
+      render();
+      return;
+    }
+    down = { x: e.clientX, y: e.clientY };
   });
 
   canvas.addEventListener('pointermove', (e) => {
-    const rect = canvas.getBoundingClientRect();
-    const view = makeView(cam, cssW, cssH);
-    const p = view.toWorld(e.clientX - rect.left, e.clientY - rect.top);
+    const p = worldAt(e);
     api.draft.cursor = p;
     $('#cursor').textContent = `x ${p.x.toFixed(2)}  y ${p.y.toFixed(2)}`;
+
+    if (api.drag) {
+      // Прилипання до півклітинки: сцени зручніше складати з рівних чисел
+      const snap = (v) => (e.altKey ? v : Math.round(v * 2) / 2);
+      moveSceneHandle(api, api.drag, snap(p.x), snap(p.y));
+      api.drag = { ...api.drag, x: snap(p.x), y: snap(p.y) };
+      render();
+      return;
+    }
 
     if (panning && last) {
       cam.x -= (e.clientX - last.x) / cam.scale;
       cam.y += (e.clientY - last.y) / cam.scale;
       last = { x: e.clientX, y: e.clientY };
+    } else if (api.tool === 'scene') {
+      const hover = findSceneHandle(api, p, pickRadius());
+      const changed = (hover?.kind !== api.hover?.kind) || (hover?.index !== api.hover?.index)
+        || (hover?.sub !== api.hover?.sub);
+      api.hover = hover;
+      canvas.style.cursor = hover ? 'grab' : '';
+      if (changed && hover) setHint(`Перетягни ${handleTitle(hover)}`);
     }
     render();
   });
 
   canvas.addEventListener('pointerup', (e) => {
     canvas.releasePointerCapture?.(e.pointerId);
+    if (api.drag) {
+      const moved = api.drag;
+      api.drag = null;
+      canvas.style.cursor = 'grab';
+      setHint(`Переміщено ${handleTitle(moved)} у (${moved.x}, ${moved.y})`);
+      refresh();                 // списки + автозбереження вже після відпускання
+      return;
+    }
     if (panning) { panning = false; last = null; return; }
     if (!down) return;
     const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
@@ -262,6 +300,14 @@ export function initEditor(state) {
     cam.y += before.y - after.y;
     render();
   }, { passive: false });
+
+  const worldAt = (e) => {
+    const rect = canvas.getBoundingClientRect();
+    return makeView(cam, cssW, cssH).toWorld(e.clientX - rect.left, e.clientY - rect.top);
+  };
+
+  /** Радіус захоплення у світових одиницях: ~12 пікселів на будь-якому зумі. */
+  const pickRadius = () => Math.max(0.15, makeView(cam, cssW, cssH).px(12));
 
   function onClick(p, mods = {}) {
     if (api.tool === 'creature') {
