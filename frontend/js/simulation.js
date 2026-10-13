@@ -18,12 +18,13 @@ import { renderCreatureThumb } from './editor/creature_editor.js';
 import { renderPredatorThumb } from './editor/predator_editor.js';
 
 const $ = (s) => document.querySelector(s);
-const CURRENT = '__current__';
-const FROM_SCENE = '__scene__';
+const EMPTY = '__none__';
 
 let preview = null;
 let colors = null;
 const pickers = {};
+/** Відкритий список має бути один: інакше меню накладаються одне на одне. */
+const closers = new Set();
 
 /**
  * Випадаючий список із мініатюрами: нативний <select> уміє лише текст, а тут
@@ -50,7 +51,13 @@ function createPicker(root, { onPick }) {
   let value = null;
 
   const close = () => { menu.hidden = true; };
-  button.addEventListener('click', (e) => { e.stopPropagation(); menu.hidden = !menu.hidden; });
+  closers.add(close);
+  button.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const willOpen = menu.hidden;
+    for (const other of closers) other();
+    menu.hidden = !willOpen;
+  });
   document.addEventListener('click', (e) => { if (!root.contains(e.target)) close(); });
   window.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
 
@@ -112,69 +119,55 @@ async function fillSelects() {
   const sceneThumb = (env) => (canvas, size) => renderSceneThumb(canvas, env, colors, { size });
   const predThumb = (p) => (canvas, size) => renderPredatorThumb(canvas, p, colors, { size });
 
-  const segments = (c) => (c?.limbs ?? []).reduce((a, l) => a + l.segments.length, 0);
-  pickers.creature.fill([
-    { value: CURRENT, label: `${state.creature.name} (з редактора)`,
-      meta: `${state.creature.limbs.length} кінц. · ${segments(state.creature)} сегм.`,
-      thumb: creatureThumb(state.creature) },
-    ...creatures.creatures.map((m) => ({
-      value: m.name, label: m.name,
-      meta: `${m.limbs} кінц. · ${m.segments} сегм.`,
-      thumb: creatureThumb(m.creature),
-    })),
-  ]);
+  // В експерименті беруть участь лише **збережені** сутності: чернетка з
+  // редактора змінюється щосекунди, а прогін має бути відтворюваним (§11)
+  const orEmpty = (items, hint) =>
+    (items.length ? items : [{ value: EMPTY, label: '— немає —', meta: hint, thumb: null }]);
 
-  pickers.scene.fill([
-    { value: CURRENT, label: 'сцена з редактора',
-      meta: `${state.environment.obstacles.length} переш. · `
-        + `${state.environment.predators.length} маршр. · ${state.environment.spawns.length} стартів`,
-      thumb: sceneThumb(state.environment) },
-    ...presets.presets.map((m) => ({
-      value: m.name, label: m.name,
-      meta: `${m.obstacles} переш. · ${m.waypoints} точок маршрутів`,
-      thumb: sceneThumb(m.environment),
-    })),
-  ]);
+  pickers.creature.fill(orEmpty(creatures.creatures.map((m) => ({
+    value: m.name, label: m.name,
+    meta: `${m.limbs} кінц. · ${m.segments} сегм.`,
+    thumb: creatureThumb(m.creature),
+  })), 'збережи істоту в бібліотеці (список над полотном)'));
 
-  // Пояснюємо конкретикою: видно, хто саме бігає кожним маршрутом сцени
-  const env = picked.environment ?? state.environment;
-  const routeOwners = (env.predators ?? []).map((r, i) => `М${i}: ${r.preset ?? 'власні'}`);
-  pickers.predator.fill([
-    { value: FROM_SCENE, label: 'нічого не підміняти',
-      meta: routeOwners.length
-        ? `кожен маршрут зі своїм — ${routeOwners.join(' · ')}`
-        : 'у сцені ще немає маршрутів',
-      thumb: null },
-    { value: CURRENT, label: `підмінити на «${state.predatorName}» (з редактора)`,
-      meta: `r ${state.predator.r_body} · аура ${state.predator.r_aura}`,
-      thumb: predThumb(state.predator) },
-    ...predators.predators.map((m) => ({
-      value: m.name, label: `підмінити на «${m.name}»`,
-      meta: `r ${m.r_body} · аура ${m.r_aura} · погоня ${m.v_chase}`,
-      thumb: predThumb(m.predator),
-    })),
-  ]);
+  pickers.scene.fill(orEmpty(presets.presets.map((m) => ({
+    value: m.name, label: m.name,
+    meta: `${m.obstacles} переш. · ${m.waypoints} точок маршрутів`,
+    thumb: sceneThumb(m.environment),
+  })), 'збережи сцену як варіант у режимі «Сцена»'));
+
+  // Сцена задає лише маршрути — хто саме ними бігає, вирішується тут
+  pickers.predator.fill(orEmpty(predators.predators.map((m) => ({
+    value: m.name, label: m.name,
+    meta: `r ${m.r_body} · аура ${m.r_aura} · погоня ${m.v_chase}`,
+    thumb: predThumb(m.predator),
+  })), 'збережи хижака в бібліотеці (режим «Хижак»)'));
 }
 
 async function resolve() {
   const cName = pickers.creature.value;
-  picked.creature = cName === CURRENT || !cName
-    ? clone(state.creature)
-    : (await loadCreature(cName).catch(() => null))?.creature ?? clone(state.creature);
+  picked.creature = cName && cName !== EMPTY
+    ? (await loadCreature(cName).catch(() => null))?.creature ?? null
+    : null;
 
   const sName = pickers.scene.value;
-  if (sName === CURRENT || !sName) {
-    picked.environment = clone(state.environment);
-  } else {
-    const res = await loadPreset(sName).catch(() => null);
-    picked.environment = res?.state?.environment
-      ? migrateEnvironment(res.state.environment) : clone(state.environment);
-  }
+  const scene = sName && sName !== EMPTY ? await loadPreset(sName).catch(() => null) : null;
+  picked.environment = scene?.state?.environment
+    ? migrateEnvironment(scene.state.environment) : null;
 
   const pName = pickers.predator.value;
-  if (pName === FROM_SCENE || !pName) picked.predator = null;
-  else if (pName === CURRENT) picked.predator = clone(state.predator);
-  else picked.predator = (await loadPredator(pName).catch(() => null))?.predator ?? null;
+  picked.predator = pName && pName !== EMPTY
+    ? (await loadPredator(pName).catch(() => null))?.predator ?? null
+    : null;
+}
+
+/** Чого бракує, щоб експеримент узагалі можна було зібрати. */
+function missing() {
+  const out = [];
+  if (!picked.creature) out.push('істоту');
+  if (!picked.environment) out.push('сцену');
+  if (!picked.predator) out.push('хижака');
+  return out;
 }
 
 /**
@@ -184,7 +177,7 @@ async function resolve() {
  */
 export function assembleExperiment() {
   const base = buildExperimentConfig();
-  const env = clone(picked.environment ?? state.environment);
+  const env = clone(picked.environment ?? defaultEnvironment());
   const dropped = [];
 
   env.predators = (env.predators ?? []).filter((route, i) => {
@@ -192,9 +185,8 @@ export function assembleExperiment() {
     dropped.push(i);
     return false;
   }).map((route) => {
-    if (!picked.predator || route.preset) return route;
-    const chosen = pickers.predator.value;
-    return { ...route, ...clone(picked.predator), preset: chosen === CURRENT ? null : chosen };
+    // Параметри хижака задає експеримент, у сцені лишається тільки маршрут
+    return { ...route, ...clone(picked.predator ?? {}), preset: pickers.predator.value };
   });
 
   return {
@@ -203,12 +195,26 @@ export function assembleExperiment() {
   };
 }
 
+/** Порожній світ — щоб прев'ю не падало, поки нічого не вибрано. */
+const defaultEnvironment = () => ({
+  world: clone(state.environment.world),
+  fluid: clone(state.environment.fluid),
+  spawns: [], predators: [], obstacles: [],
+});
+
 function summarize({ config, dropped }) {
   const env = config.environment;
+  const gaps = missing();
+  if (gaps.length) {
+    $('#sim-summary').textContent = `Немає з чого зібрати експеримент: вибери ${gaps.join(', ')}`;
+    $('#sim-warn').textContent = 'сутності беруться лише зі збережених — збережи їх у редакторі';
+    return;
+  }
+  const predName = pickers.predator.value;
   $('#sim-summary').textContent = [
     `істота: ${config.creature.name ?? '—'} (${config.creature.limbs.length} кінц.)`,
+    `хижак: ${predName} × ${env.predators.length} маршр.`,
     `перешкод: ${env.obstacles.length}`,
-    `маршрутів: ${env.predators.length}`,
     `стартів: ${env.spawns.length || '1 (центр світу)'}`,
   ].join(' · ');
   $('#sim-warn').textContent = warnings(config, dropped).join(' · ');
@@ -242,6 +248,10 @@ function warnings(config, dropped) {
 /** Похідні розміру мережі для вибраної істоти (§4.4, §5). */
 async function describeCreature(config) {
   const set = (id, v) => { $(id).textContent = v; };
+  if (!picked.creature) {
+    for (const id of ['#sim-joints', '#sim-nin', '#sim-genome', '#sim-cost']) set(id, '—');
+    return;
+  }
   try {
     const res = await validateCreature(config.creature);
     if (!res.valid) {

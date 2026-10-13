@@ -130,8 +130,9 @@
       <!-- Сцена → маршрути патрулювання -->
       <div class="group" data-panel="scene" data-scene="route">
         <h3>Маршрути хижаків (<span id="route-count">0</span>/8)</h3>
-        <p class="small muted">Клік по полотну додає точку маршруту вибраному хижаку
-          (потрібно ≥2). Параметри беруться з бібліотеки — режим «Хижак».</p>
+        <p class="small muted">Маршрут — це тільки шлях патрулювання: клік по полотну
+          додає точку (потрібно ≥2). Якого саме хижака по ньому запустити, обирається
+          у «Симуляції»; на полотні показано поточного з режиму «Хижак».</p>
         <div class="btns">
           <button id="route-add" class="primary">+ Маршрут</button>
           <button id="route-del" class="danger">Видалити</button>
@@ -140,14 +141,9 @@
         <div id="route-form" hidden>
           <hr>
           <div class="row">
-            <label for="route-predator" title="predators[].preset">Хижак</label>
-            <select id="route-predator"></select>
-          </div>
-          <div class="row">
             <label for="route-enabled" title="enabled">Активний</label>
             <input type="checkbox" id="route-enabled" checked style="flex:none">
           </div>
-          <p class="small muted mono" id="route-params">—</p>
           <ul class="list" id="route-wp-list"></ul>
           <div class="btns"><button id="route-clear" class="danger">Очистити маршрут</button></div>
         </div>

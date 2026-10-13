@@ -33,8 +33,8 @@ import {
   predatorParams, applyPredatorParams, radiiOrderOk,
 } from './predator_editor.js';
 import {
-  initScenePanel, syncScenePanel, syncRouteSources, drawScene,
-  handleSpawnClick, handleRouteClick, addRoute,
+  initScenePanel, syncScenePanel, drawScene,
+  handleSpawnClick, handleRouteClick,
   findSceneHandle, moveSceneHandle, handleTitle,
 } from './scene_editor.js';
 
@@ -68,8 +68,6 @@ export function initEditor(state) {
     sceneTool: 'obstacle',
     hover: null,          // точка сцени під курсором
     drag: null,           // точка, яку зараз тягнемо
-    predatorLibrary: new Map(),      // назва → параметри (для маршрутів)
-    predatorLibraryRows: [],
     // `limbs` — множина вибраних кінцівок, `limb` — активна (її показує форма)
     sel: {
       limb: -1, limbs: new Set(), seg: 0,
@@ -160,7 +158,6 @@ export function initEditor(state) {
     applyPanelVisibility();
     setHint(tool === 'scene' ? sceneHint() : TOOL_HINTS[tool]);
     syncLibraryBar();
-    if (tool === 'scene') syncPredatorLibrary();
     announceTool();
     render();
   }
@@ -478,19 +475,6 @@ export function initEditor(state) {
     }
   }
 
-  /** Бібліотека хижаків потрібна і в «Сцені» — як джерело параметрів маршруту. */
-  async function syncPredatorLibrary() {
-    try {
-      const data = await listPredators();
-      api.predatorLibraryRows = data.predators;
-      api.predatorLibrary = new Map(data.predators.map((m) => [m.name, m.predator]));
-    } catch {
-      api.predatorLibraryRows = [];
-      api.predatorLibrary = new Map();
-    }
-    if (api.tool === 'scene') syncRouteSources(api, api.predatorLibraryRows);
-  }
-
   async function syncLibrary() {
     const ul = $('#lib-list');
     const kind = libraryKind();
@@ -498,10 +482,6 @@ export function initEditor(state) {
       const data = kind === 'predators' ? await listPredators() : await listCreatures();
       libraryRows = kind === 'predators' ? data.predators : data.creatures;
       $('#lib-count').textContent = `${libraryRows.length}`;
-      if (kind === 'predators') {
-        api.predatorLibraryRows = libraryRows;
-        api.predatorLibrary = new Map(libraryRows.map((m) => [m.name, m.predator]));
-      }
     } catch {
       ul.innerHTML = '<li class="muted" style="border-style:dashed">бібліотека недоступна</li>';
       return;
@@ -609,7 +589,6 @@ export function initEditor(state) {
         await savePredator(name, predatorParams(api.state.predator));
         api.state.predatorName = name;
         message(`Хижака «${name}» збережено в бібліотеку`, 'ok');
-        await syncPredatorLibrary();
         syncLibrary();
         refresh();
       } catch (err) {
@@ -772,7 +751,6 @@ export function initEditor(state) {
   setTool('creature');
   refresh();
   syncPresetList();
-  syncPredatorLibrary();
 
   return api;
 }

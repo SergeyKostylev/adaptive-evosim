@@ -12,13 +12,11 @@
 import { DEFAULTS, clone } from '../state.js';
 import { circle, line, polygon, aura, hexAlpha } from '../render/shapes.js';
 import { fmtDeg } from './creature_editor.js';
-import { radiiOrderOk } from './predator_editor.js';
 
 const $ = (s) => document.querySelector(s);
 const round = (v, d = 3) => Number(v.toFixed(d));
 const MAX_ROUTES = 8;
 const MAX_SPAWNS = 16;
-const OWN = '__own__';
 
 const spawns = (api) => api.state.environment.spawns;
 const routes = (api) => api.state.environment.predators;
@@ -51,17 +49,14 @@ export function handleSpawnClick(api, p, { hitRadius = 0.6 } = {}) {
 }
 
 // --- Маршрути ---------------------------------------------------------------
-export function addRoute(api, params = null, preset = null) {
+export function addRoute(api) {
   if (routes(api).length >= MAX_ROUTES) {
     api.setHint(`Максимум ${MAX_ROUTES} маршрутів`);
     return null;
   }
-  routes(api).push({
-    ...clone(DEFAULTS.predator),
-    ...(params ?? {}),
-    preset,
-    waypoints: [],
-  });
+  // Маршрут зберігає лише шлях; параметри хижака підставляє «Симуляція»,
+  // а для прев'ю беруться з поточної сутності в режимі «Хижак»
+  routes(api).push({ enabled: true, waypoints: [] });
   api.sel.predator = routes(api).length - 1;
   api.sel.waypoint = -1;
   api.setHint(`Маршрут М${api.sel.predator} додано — клікай його точки`);
@@ -75,7 +70,7 @@ export function handleRouteClick(api, p, { hitRadius = 0.8 } = {}) {
   routes(api).forEach((route, i) => {
     const pos = routePos(route);
     if (!pos || i === api.sel.predator) return;
-    const reach = Math.max(hitRadius, route.r_body ?? DEFAULTS.predator.r_body);
+    const reach = Math.max(hitRadius, api.state.predator?.r_body ?? DEFAULTS.predator.r_body);
     const d = Math.hypot(p.x - pos[0], p.y - pos[1]);
     if (d <= reach && d < best) { best = d; hit = i; }
   });
@@ -180,6 +175,8 @@ export function drawScene(ctx, view, api, colors) {
   const labels = [];
   const subTool = api.sceneTool;
   const active = api.drag ?? api.hover;
+  // Параметри для прев'ю — з редагованої сутності «Хижак»: у сцені їх немає
+  const shape = { ...clone(DEFAULTS.predator), ...(api.state.predator ?? {}) };
 
   // Маршрути з хижаками
   routes(api).forEach((route, i) => {
@@ -203,10 +200,10 @@ export function drawScene(ctx, view, api, colors) {
     const pos = routePos(route);
     if (!pos) return;
     const [px, py] = pos;
-    const rBody = route.r_body ?? DEFAULTS.predator.r_body;
-    if (route.enabled !== false) aura(ctx, px, py, route.r_aura, colors.danger);
-    circle(ctx, px, py, route.r_detect, { stroke: hexAlpha(colors.danger, 0.4 * dim), lw, dash: [2, 1] });
-    circle(ctx, px, py, route.r_aura, { stroke: hexAlpha(colors.danger, 0.65 * dim), lw });
+    const rBody = shape.r_body;
+    if (route.enabled !== false) aura(ctx, px, py, shape.r_aura, colors.danger);
+    circle(ctx, px, py, shape.r_detect, { stroke: hexAlpha(colors.danger, 0.4 * dim), lw, dash: [2, 1] });
+    circle(ctx, px, py, shape.r_aura, { stroke: hexAlpha(colors.danger, 0.65 * dim), lw });
     if (selected) {
       circle(ctx, px, py, rBody + view.px(6), { stroke: hexAlpha(colors.danger, 0.6), lw: view.px(1) });
     }
@@ -214,7 +211,7 @@ export function drawScene(ctx, view, api, colors) {
 
     labels.push({
       x: px, y: py + rBody + 0.45,
-      text: `М${i}${route.preset ? ` · ${route.preset}` : ''}${route.enabled === false ? ' (вимк.)' : ''}`,
+      text: `М${i}${route.enabled === false ? ' (вимк.)' : ''}`,
       color: selected ? colors.danger : hexAlpha(colors.danger, 0.85),
       size: selected ? 12 : 11, bg: hexAlpha(colors.bg, 0.7),
     });
@@ -305,39 +302,6 @@ export function initScenePanel(api) {
     route.enabled = e.target.checked;
     api.refresh();
   });
-  $('#route-predator').addEventListener('change', (e) => {
-    const route = activeRoute(api);
-    if (!route) return;
-    const name = e.target.value;
-    if (name === OWN) {
-      route.preset = null;
-      api.setHint('Маршрут використовує власні параметри');
-    } else {
-      const params = api.predatorLibrary.get(name);
-      if (params) Object.assign(route, clone(params), { preset: name });
-      api.setHint(`М${api.sel.predator}: параметри хижака «${name}»`);
-    }
-    api.refresh();
-  });
-}
-
-/** Наповнює список хижаків для маршруту (бібліотека + «власні»). */
-export function syncRouteSources(api, predators = []) {
-  const select = $('#route-predator');
-  const route = activeRoute(api);
-  select.innerHTML = '';
-  const own = document.createElement('option');
-  own.value = OWN;
-  own.textContent = 'власні параметри';
-  select.appendChild(own);
-  for (const meta of predators) {
-    const o = document.createElement('option');
-    o.value = meta.name;
-    o.textContent = `${meta.name} · r ${meta.r_body} · аура ${meta.r_aura}`;
-    select.appendChild(o);
-  }
-  select.value = route?.preset && [...select.options].some((o) => o.value === route.preset)
-    ? route.preset : OWN;
 }
 
 export function syncScenePanel(api) {
@@ -384,10 +348,8 @@ export function syncScenePanel(api) {
   rlist.forEach((route, i) => {
     const li = document.createElement('li');
     li.className = i === api.sel.predator ? 'sel' : '';
-    const bad = radiiOrderOk(route) ? '' : ' ⚠';
     li.innerHTML = `<span class="grow">${i === api.sel.predator ? '◉' : '○'} М${i} · `
-      + `${route.waypoints.length} точ. · ${route.preset ?? 'власні'}${bad}`
-      + `${route.enabled === false ? ' · вимк.' : ''}</span>`;
+      + `${route.waypoints.length} точ.${route.enabled === false ? ' · вимк.' : ''}</span>`;
     const del = document.createElement('button');
     del.textContent = '✕';
     del.addEventListener('click', (e) => {
@@ -408,10 +370,6 @@ export function syncScenePanel(api) {
   $('#route-form').hidden = !route;
   if (route) {
     $('#route-enabled').checked = route.enabled !== false;
-    $('#route-params').textContent =
-      `r ${route.r_body} · патруль ${route.v_patrol} · погоня ${route.v_chase} · `
-      + `аура ${route.r_aura} · виявлення ${route.r_detect}`;
-    syncRouteSources(api, api.predatorLibraryRows ?? []);
 
     const wpList = $('#route-wp-list');
     wpList.innerHTML = '';
