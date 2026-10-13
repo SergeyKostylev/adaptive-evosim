@@ -77,6 +77,7 @@ export function initEditor(state) {
     refresh,
     setHint,
     setTool,
+    setSceneTool: (sub) => setSceneTool(sub),
     changed: stateChanged,
   };
 
@@ -154,6 +155,7 @@ export function initEditor(state) {
     setHint(tool === 'scene' ? sceneHint() : TOOL_HINTS[tool]);
     syncLibraryBar();
     if (tool === 'scene') syncPredatorLibrary();
+    announceTool();
     render();
   }
 
@@ -164,7 +166,15 @@ export function initEditor(state) {
     });
     applyPanelVisibility();
     setHint(sceneHint());
+    announceTool();
     render();
+  }
+
+  /** Режим редактора відображається в URL — цим займається app.js. */
+  function announceTool() {
+    window.dispatchEvent(new CustomEvent('editortool', {
+      detail: { tool: api.tool, sceneTool: api.sceneTool },
+    }));
   }
 
   const sceneHint = () =>

@@ -32,20 +32,61 @@ function showFatal(what, err) {
 window.addEventListener('error', (e) => showFatal('скрипт', e.error ?? e.message));
 window.addEventListener('unhandledrejection', (e) => showFatal('запит', e.reason));
 
+// --- Стан екрана в URL ------------------------------------------------------
+// Щоб перезавантаження (а його під час розробки багато) поверталo на той самий
+// екран, а посиланням можна було поділитись.
+const TABS = ['editor', 'simulation', 'analytics'];
+const TOOLS = ['creature', 'predator', 'scene'];
+const SCENE_TOOLS = ['obstacle', 'route', 'spawn'];
+
+function readUrl() {
+  const p = new URLSearchParams(window.location.search);
+  const pick = (key, allowed) => (allowed.includes(p.get(key)) ? p.get(key) : null);
+  return { tab: pick('tab', TABS), tool: pick('tool', TOOLS), scene: pick('scene', SCENE_TOOLS) };
+}
+
+let urlState = { tab: 'editor', tool: 'creature', scene: 'obstacle' };
+
+function writeUrl(patch = {}) {
+  urlState = { ...urlState, ...patch };
+  const p = new URLSearchParams(window.location.search);
+  p.set('tab', urlState.tab);
+  if (urlState.tab === 'editor') {
+    p.set('tool', urlState.tool);
+    if (urlState.tool === 'scene') p.set('scene', urlState.scene);
+    else p.delete('scene');
+  } else {
+    p.delete('tool');
+    p.delete('scene');
+  }
+  // replaceState, а не pushState: перемикання режимів не має засмічувати
+  // історію браузера десятками записів
+  window.history.replaceState(null, '', `${window.location.pathname}?${p}`);
+}
+
 const STATE_LABELS = { RUNNING: 'виконується', PAUSED: 'пауза', STOPPED: 'зупинено' };
 const MODE_LABELS = { headless: 'без рендера', live: 'живий перегляд' };
 
 // --- Вкладки ---------------------------------------------------------------
-function initTabs() {
+function activateTab(name, { silent = false } = {}) {
   const buttons = [...document.querySelectorAll('nav button')];
-  buttons.forEach((btn) => {
-    btn.addEventListener('click', () => {
-      buttons.forEach((b) => b.classList.toggle('active', b === btn));
-      document.querySelectorAll('.tab').forEach((t) =>
-        t.classList.toggle('active', t.id === `tab-${btn.dataset.tab}`));
-      if (btn.dataset.tab === 'simulation') refreshExperimentPreview();
-      window.dispatchEvent(new CustomEvent('tabchange', { detail: btn.dataset.tab }));
-    });
+  const btn = buttons.find((b) => b.dataset.tab === name) ?? buttons[0];
+  buttons.forEach((b) => b.classList.toggle('active', b === btn));
+  document.querySelectorAll('.tab').forEach((t) =>
+    t.classList.toggle('active', t.id === `tab-${btn.dataset.tab}`));
+  if (!silent) writeUrl({ tab: btn.dataset.tab });
+  window.dispatchEvent(new CustomEvent('tabchange', { detail: btn.dataset.tab }));
+}
+
+function initTabs() {
+  document.querySelectorAll('nav button').forEach((btn) =>
+    btn.addEventListener('click', () => activateTab(btn.dataset.tab)));
+  // Режим редактора повідомляє про себе подією — щоб editor.js не знав про URL
+  window.addEventListener('editortool', (e) =>
+    writeUrl({ tool: e.detail.tool, scene: e.detail.sceneTool }));
+  window.addEventListener('popstate', () => {
+    const fromUrl = readUrl();
+    if (fromUrl.tab) activateTab(fromUrl.tab, { silent: true });
   });
 }
 
@@ -82,15 +123,28 @@ async function restoreSavedState() {
 }
 
 async function bootstrap() {
+  const fromUrl = readUrl();
   initTabs();
   await restoreSavedState();
-  initEditor(state);
+  const api = initEditor(state);
+
+  // Режим редактора з URL — до першого рендера, щоб не блимало типовим
+  if (fromUrl.tool) api.setTool(fromUrl.tool);
+  if (fromUrl.scene) api.setSceneTool(fromUrl.scene);
+  writeUrl({
+    tab: fromUrl.tab ?? 'editor',
+    tool: fromUrl.tool ?? 'creature',
+    scene: fromUrl.scene ?? 'obstacle',
+  });
+
   markSnapshotSaved();        // те, що відкрили, вже лежить на сервері
   setReady(true);
   refreshExperimentJson();
   [...document.querySelectorAll('#tab-simulation input')]
     .forEach((i) => i.addEventListener('change', () => { stateChanged(); refreshExperimentPreview(); }));
-  initSimulationPicker().catch((e) => showFatal('симуляція', e));
+  initSimulationPicker()
+    .then(() => { if (fromUrl.tab && fromUrl.tab !== 'editor') activateTab(fromUrl.tab); })
+    .catch((e) => showFatal('симуляція', e));
   await pollStatus();
   setInterval(pollStatus, 5000);
 }

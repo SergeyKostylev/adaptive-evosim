@@ -57,6 +57,7 @@ function createPicker(root, { onPick }) {
   function renderButton() {
     const item = items.find((i) => i.value === value) ?? items[0];
     name.textContent = item?.label ?? '—';
+    thumb.hidden = !item?.thumb;
     item?.thumb?.(thumb, 26);
   }
 
@@ -73,10 +74,12 @@ function createPicker(root, { onPick }) {
       for (const item of items) {
         const li = document.createElement('li');
         li.className = item.value === value ? 'sel' : '';
-        const c = document.createElement('canvas');
-        c.className = 'thumb';
-        li.appendChild(c);
-        item.thumb?.(c, 34);
+        if (item.thumb) {
+          const c = document.createElement('canvas');
+          c.className = 'thumb';
+          li.appendChild(c);
+          item.thumb(c, 34);
+        }
         const text = document.createElement('span');
         text.className = 'grow';
         text.innerHTML = `<span>${item.label}</span>`
