@@ -1,6 +1,10 @@
 """Єдиний stateful-сервіс: стани RUNNING/PAUSED/STOPPED, ГА у фоновому
 потоці, публікація подій у asyncio-черги для WebSocket (§1.2).
 
+Прогін, що пройшов усі заплановані покоління без помилки, копіюється в
+архів (`experiment_store.RunStore.archive`, §11); зупинений вручну чи упалий —
+лишається тільки в `runs/`.
+
 Потік ГА майже весь час чекає на пул процесів оцінки, тож GIL він у event
 loop не забирає: живе прев'ю (`live_stream`) крутиться паралельно. Пауза —
 між поколіннями; зупинка перериває поточне покоління (його результат не
@@ -63,6 +67,8 @@ class SimulationManager:
         self.generation = 0
         self.population = 0
         self.error: str | None = None
+        #: Куди скопійовано завершений прогін (§11); `None` — не завершений
+        self.archived: str | None = None
         self._lock = threading.Lock()
         self._thread: threading.Thread | None = None
         self._running = threading.Event()     # знятий = пауза
@@ -83,7 +89,8 @@ class SimulationManager:
 
     def state_packet(self) -> dict:
         return {"type": "state", "state": self.state, "run_id": self.run_id,
-                "generation": self.generation, "error": self.error}
+                "generation": self.generation, "error": self.error,
+                "archived": self.archived}
 
     def _publish(self, packet: dict) -> None:
         loop = self._loop
@@ -106,6 +113,7 @@ class SimulationManager:
             self.generation = 0
             self.population = cfg.ga.population
             self.error = None
+            self.archived = None
             self._stop.clear()
             self._running.set()
             self._started_at = time.monotonic()
@@ -162,6 +170,9 @@ class SimulationManager:
                 run_loop(ga, evaluator, store, until=cfg.ga.generations,
                          before_generation=self._before_generation,
                          on_generation=self._on_generation, cancel=self._stop)
+            # В архів — лише прогін, що пройшов усі заплановані покоління (§11)
+            if ga.generation > cfg.ga.generations and not self._stop.is_set():
+                self.archived = str(store.archive().relative_to(C.DATA_DIR))
         except EvaluationCancelled:
             pass
         except Exception as exc:          # noqa: BLE001 — потік не має падати мовчки

@@ -150,8 +150,9 @@ def main(argv: list[str] | None = None) -> int:
 
     with Evaluator(cfg, args.workers) as evaluator:
         run_loop(ga, evaluator, store, until=cfg.ga.generations, on_generation=report)
+    archived = store.archive()          # сюди доходить лише завершений прогін (§11)
     print(f"готово: найкращий F={ga.best_fitness:.4f} (покоління {ga.best_generation}), "
-          f"{store.path}", flush=True)
+          f"{store.path}; архів — {archived}", flush=True)
     return 0
 
 

@@ -58,6 +58,7 @@ def test_full_run_publishes_generations_and_stores_results(client, demo_creature
             else:
                 states.append(packet["state"])
                 if packet["state"] == "STOPPED":
+                    assert packet["archived"] == f"{C.ARCHIVE_SUBDIR}/{run_id}"
                     break
 
     assert [g["generation"] for g in generations] == [1, 2, 3]
@@ -76,6 +77,13 @@ def test_full_run_publishes_generations_and_stores_results(client, demo_creature
                       params={"run_id": run_id, "from_gen": 3}).json()["rows"]
     assert len(tail) == 1
 
+    # Завершений прогін — в архіві (§11), без чекпоінтів
+    archived = C.DATA_DIR / C.ARCHIVE_SUBDIR / run_id
+    assert states[-1] == "STOPPED"
+    assert sorted(p.name for p in archived.iterdir()) == sorted(C.ARCHIVE_FILES)
+    assert (archived / "metrics.csv").read_bytes() == (
+        C.DATA_DIR / C.RUNS_SUBDIR / run_id / "metrics.csv").read_bytes()
+
     genome = client.get("/api/genome/best", params={"run_id": run_id}).json()
     validated = client.post("/api/creature/validate", json=demo_creature).json()
     assert genome["creature_hash"] == validated["creature_hash"]
@@ -88,7 +96,12 @@ def test_second_start_conflicts(client, demo_creature):
     second = client.post("/api/simulation/start", json=experiment(demo_creature))
     assert second.status_code == 409
     assert second.json()["error"]["code"] == "CONFLICT"
+    run_id = first.json()["run_id"]
     assert client.post("/api/simulation/stop").json()["state"] == "STOPPED"
+    # Зупинений до кінця — лише локально в runs/, не в архіві
+    assert not (C.DATA_DIR / C.ARCHIVE_SUBDIR / run_id).exists()
+    assert (C.DATA_DIR / C.RUNS_SUBDIR / run_id / "config.json").exists()
+    assert client.get("/api/simulation/status").json()["state"] == "STOPPED"
 
 
 def test_pause_holds_generations_resume_continues(client, demo_creature):

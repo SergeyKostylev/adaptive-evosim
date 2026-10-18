@@ -136,6 +136,10 @@ PREVIEW_EPISODE_SECONDS: float = 30.0
 # Локально задається через EVOSIM_DATA_DIR, інакше — `experiments/` від CWD.
 DATA_DIR: Path = Path(os.getenv("EVOSIM_DATA_DIR", "experiments")).resolve()
 RUNS_SUBDIR: str = "runs"
+#: Завершені прогони (усі покоління, без помилки) копіюються сюди — і в git (§11)
+ARCHIVE_SUBDIR: str = "archive"
+#: Що з прогону йде в архів: легке й незамінне; чекпоінти й графіки — ні
+ARCHIVE_FILES: tuple[str, ...] = ("config.json", "metrics.csv", "timing.csv", "best_genome.json")
 EDITOR_SUBDIR: str = "editor"       # стан конструктора між сеансами
 RUNS_DIR: str = "experiments/runs"
 RUN_ID_TIME_FMT: str = "%Y%m%d-%H%M"

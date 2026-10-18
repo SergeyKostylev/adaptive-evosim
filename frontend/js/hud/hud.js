@@ -69,7 +69,8 @@ async function applyState(packet) {
   if (packet.error) message(`прогін зупинився з помилкою: ${packet.error}`, 'err');
   else if (run.state === 'RUNNING') message('навчання триває; пауза настає між поколіннями');
   else if (run.state === 'PAUSED') message('пауза: поточне покоління дооцінене й записане');
-  else if (run.runId) message(`прогін ${run.runId} зупинено; результати — у experiments/runs/`);
+  else if (packet.archived) message(`прогін ${run.runId} завершено й скопійовано в experiments/${packet.archived}`, 'ok');
+  else if (run.runId) message(`прогін ${run.runId} зупинено до кінця — лишився тільки локально в experiments/runs/`);
   onRunChange?.({ ...run });
 }
 

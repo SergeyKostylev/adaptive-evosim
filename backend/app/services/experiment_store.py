@@ -13,6 +13,7 @@ import io
 import json
 import os
 import re
+import shutil
 from datetime import datetime
 from pathlib import Path
 
@@ -36,6 +37,10 @@ class RunNotFound(LookupError):
 
 def runs_root() -> Path:
     return C.DATA_DIR / C.RUNS_SUBDIR
+
+
+def archive_root() -> Path:
+    return C.DATA_DIR / C.ARCHIVE_SUBDIR
 
 
 def run_path(run_id: str) -> Path:
@@ -132,6 +137,28 @@ class RunStore:
 
     def save_best_genome(self, genome_json: dict) -> None:
         _atomic_write(self.path / "best_genome.json", json.dumps(genome_json))
+
+    def archive(self) -> Path:
+        """Копія завершеного прогону в `archive/{run_id}/` (§11).
+
+        Збирається в тимчасовому каталозі й переіменовується одним кроком: в
+        архіві не буває напівскопійованого прогону. Повторний виклик нічого
+        не перезаписує.
+        """
+        root = archive_root()
+        target = root / self.run_id
+        if target.exists():
+            return target
+        root.mkdir(parents=True, exist_ok=True)
+        staging = root / f".{self.run_id}.tmp"
+        shutil.rmtree(staging, ignore_errors=True)
+        staging.mkdir()
+        for name in C.ARCHIVE_FILES:
+            src = self.path / name
+            if src.exists():
+                shutil.copy2(src, staging / name)
+        os.replace(staging, target)
+        return target
 
     # --- читання -----------------------------------------------------------
     def load_config(self) -> ExperimentConfig:

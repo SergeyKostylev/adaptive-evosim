@@ -6,15 +6,18 @@ venv/
 .pytest_cache/
 *.egg-info/
 
-# Прогони ГА версіонуються всі (§11): config.json, metrics.csv, timing.csv і
-# best_genome.json важать десятки КБ, а побітово відтворити прогін можна лише в
-# тому самому середовищі (R7). Поза git — лише важке й похідне:
-#   checkpoints/ — популяція кожні 25 поколінь, потрібна тільки для --resume;
-#   figures/     — генерується export-ом із metrics.csv;
-#   *.tmp        — проміжні файли атомарного запису (tmp + os.replace).
-experiments/runs/*/checkpoints/
-experiments/runs/*/figures/
-experiments/runs/**/*.tmp
+# Робочі прогони ГА — лише локально: сюди пишуть усі старти, зокрема пробні
+# й зупинені вручну.
+experiments/runs/*
+!experiments/runs/.gitkeep
+
+# Архів (§11): прогін, що пройшов усі заплановані покоління без помилки,
+# копіюється сюди автоматично — і версіонується, бо побітово відтворити його
+# можна лише в тому самому середовищі (R7). Чекпоінтів і графіків в архіві
+# немає; на випадок ручного копіювання вони теж ігноруються.
+experiments/archive/*/checkpoints/
+experiments/archive/*/figures/
+experiments/archive/**/*.tmp
 
 # Бібліотеки сутностей (creatures/, predators/, presets/) НЕ ігноруються:
 # це створені руками істоти, хижаки та сцени, і вони мусять переживати

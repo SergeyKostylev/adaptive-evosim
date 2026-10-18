@@ -79,3 +79,17 @@ def test_timing_kept_out_of_metrics(data_dir, demo_creature):
     rows = store.read_generations()
     assert [r["generation"] for r in rows] == [1, 2, 3]
     assert all(r["eval_seconds"] > 0 for r in rows)
+
+
+def test_archive_copies_light_files_once(data_dir, demo_creature):
+    """§11: в архів — лише легкі файли, атомарно, без перезапису наявного."""
+    store = run_once(small_cfg(demo_creature), workers=1)
+    (store.path / "checkpoints").mkdir()
+    (store.path / "checkpoints" / "gen_025.npz").write_bytes(b"x")
+    target = store.archive()
+    assert target == data_dir / C.ARCHIVE_SUBDIR / store.run_id
+    assert sorted(p.name for p in target.iterdir()) == sorted(C.ARCHIVE_FILES)
+    assert not list((data_dir / C.ARCHIVE_SUBDIR).glob(".*.tmp"))
+    (target / "metrics.csv").write_text("правка руками")
+    store.archive()
+    assert (target / "metrics.csv").read_text() == "правка руками"
