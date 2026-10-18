@@ -1,9 +1,12 @@
 """Фасад одного епізоду: `World(creature_cfg, env_cfg, genome, seed)` (§1.2).
 
-`step()` виконує один крок `DT` у порядку «фізика → (сенсори → мозок) →
-хижак → фітнес». На етапі 2 реалізовані фізика й керування; сенсори та мозок
-приходять на етапі 3, FSM хижака й фітнес — на етапі 4, тож відповідні частини
-знімка поки що порожні (див. §9.5).
+`step()` виконує один крок `DT`: на control-тиках «сенсори → мозок → мотори»,
+далі фізика й накопичення фітнесу. Етап 3 дає мозок (геном), пропріоцепцію з
+осцилятором і компоненти `D`, `Pas`, `E_n`; FSM хижака, радар, аура та решта
+фітнесу — етап 4, тож відповідні частини знімка поки що порожні (див. §9.5).
+
+Без геному епізод крутиться на тестовій синусоїді (§2.4) — і так само рахує
+фітнес, щоб базову лінію можна було порівняти з навченою істотою.
 """
 
 from __future__ import annotations
@@ -13,9 +16,12 @@ import math
 import numpy as np
 
 from .. import config as C
-from ..schemas import CreatureConfig, EnvironmentConfig
+from ..evolution.fitness import FitnessAccumulator
+from ..schemas import CreatureConfig, EnvironmentConfig, FitnessWeights
+from .brain import Brain
 from .creature import Creature, build_creature
 from .physics import PhysicsWorld
+from .sensors import Sensors
 
 
 class SineController:
@@ -41,6 +47,16 @@ class SineController:
         return np.sin(2 * math.pi * self.freq * t + self.phases)
 
 
+class BrainController:
+    """Контролер із геному: сенсори → MLP → команди моторів (§4, §5)."""
+
+    def __init__(self, brain: Brain):
+        self.brain = brain
+
+    def __call__(self, t: float, world: "World") -> np.ndarray:
+        return self.brain.forward(world.sensors.read(t))
+
+
 class World:
     """Один епізод: істота в середовищі, фіксований `DT`, детермінований сід."""
 
@@ -54,6 +70,7 @@ class World:
         controller=None,
         episode_seconds: float = C.GA_EPISODE_SECONDS,
         spawn_index: int = 0,
+        weights: FitnessWeights | None = None,
     ):
         self.creature_cfg = creature_cfg
         self.env = env_cfg
@@ -70,8 +87,16 @@ class World:
         self.physics.add_creature(self.creature)
 
         self.n_joints = self.creature.n_joints
+        self.sensors = Sensors(self.creature)
+        self.brain: Brain | None = None
+        if controller is None and genome is not None:
+            self.brain = Brain(genome, self.sensors.n_in, self.n_joints)
+            controller = BrainController(self.brain)
         self.controller = controller or SineController(creature_cfg)
         self.commands = np.zeros(self.n_joints, dtype=np.float64)
+        self._u_abs = 0.0
+        self.fitness = FitnessAccumulator(
+            self.episode_seconds, self.n_joints, position, weights)
 
         self.steps = 0
         self.t = 0.0
@@ -94,11 +119,15 @@ class World:
         if not self.alive:
             return
         if self.steps % C.CONTROL_EVERY == 0:
-            self.commands = np.asarray(self.controller(self.t, self), dtype=np.float64)
+            self.commands = np.clip(
+                np.asarray(self.controller(self.t, self), dtype=np.float64), -1.0, 1.0)
             self.creature.set_motor_rates(self.commands)
+            self._u_abs = float(np.abs(self.commands).sum())
         self.physics.step(self.t)
         self.steps += 1
         self.t = self.steps * C.DT
+        vx, vy = self.creature.body.velocity
+        self.fitness.step(math.hypot(vx, vy), self._u_abs)
         if self.t >= self.episode_seconds:
             self.alive = False
             self.ended_reason = "time"
@@ -115,6 +144,11 @@ class World:
         """Чисте зміщення від старту — те саме, що компонент `D` (§7.1)."""
         pos = np.array(self.creature.body.position, dtype=np.float64)
         return float(np.linalg.norm(pos - self.start_position))
+
+    def fitness_result(self) -> tuple[float, dict[str, float]]:
+        """`(F, компоненти)` на поточний момент; після кінця епізоду — підсумок (§7)."""
+        pos = self.creature.body.position
+        return self.fitness.result(self.t, (pos.x, pos.y))
 
     @property
     def max_speed(self) -> float:
@@ -157,9 +191,10 @@ class World:
     def snapshot(self) -> dict:
         """Кадр `FramePacket` без службових полів транспорту (§9.5).
 
-        Сенсори та фітнес порожні до етапів 3–4 — див. примітку в §9.5.
+        Промені й аура порожні до етапу 4 — див. примітку в §9.5.
         """
         body = self.creature.body
+        fitness, components = self.fitness_result()
         cfg_body = self.creature_cfg.body
         return {
             "type": "frame",
@@ -197,8 +232,7 @@ class World:
                 "episode_t": round(self.t, 3),
                 "displacement": round(self.displacement, 3),
                 "speed": round(float(body.velocity.length), 3),
-                "fitness_running": None,
-                "components": {"S": 0.0, "D": 0.0, "G_aura": 0.0,
-                               "C": 0.0, "Pas": 0.0, "E_n": 0.0},
+                "fitness_running": round(fitness, 4),
+                "components": {k: round(v, 4) for k, v in components.items()},
             },
         }

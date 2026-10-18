@@ -491,6 +491,35 @@ class SimulationStatus(BaseModel):
     mode: Literal["headless", "live"] = "headless"
 
 
+class SimulationControlResponse(BaseModel):
+    """Відповідь `start/pause/resume/stop` (§9.4)."""
+
+    state: Literal["RUNNING", "PAUSED", "STOPPED"]
+    run_id: str | None = None
+
+
+class GenerationStats(BaseModel):
+    """Підсумок покоління — пакет `/ws/metrics` і рядок метрик (§9.6)."""
+
+    type: Literal["generation"] = "generation"
+    run_id: str
+    generation: int
+    best_fitness: float
+    avg_fitness: float
+    std_fitness: float
+    diversity: float
+    best_components: dict[str, float]
+    eval_seconds: float
+    sim_fps_equivalent: float
+
+
+class GenerationRows(BaseModel):
+    """`GET /api/metrics/generations` (§9.4)."""
+
+    run_id: str
+    rows: list[GenerationStats] = Field(default_factory=list)
+
+
 class ErrorBody(BaseModel):
     code: str
     message: str

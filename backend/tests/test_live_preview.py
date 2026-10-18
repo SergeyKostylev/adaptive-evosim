@@ -50,12 +50,15 @@ def test_preview_reports_network_sizes(client, demo_creature):
 
 
 def test_unimplemented_sources_return_501(client, demo_creature):
-    for source in ("genome", "best", "live_training"):
-        res = client.post("/api/preview", json={
-            "source": source, "creature": demo_creature, "run_id": "x",
-            "genome": None,
-        })
-        assert res.status_code in (422, 501), source
+    """`live_training` — етап 4; `genome`/`best` уже є, але без даних — не 200."""
+    res = client.post("/api/preview", json={
+        "source": "live_training", "creature": demo_creature, "run_id": "x"})
+    assert res.status_code == 501
+    res = client.post("/api/preview", json={
+        "source": "genome", "creature": demo_creature, "genome": None})
+    assert res.status_code == 422
+    res = client.post("/api/preview", json={"source": "best", "run_id": "немає__20260101-0000"})
+    assert res.status_code == 404
 
 
 def test_preview_state_round_trip(client, demo_creature):

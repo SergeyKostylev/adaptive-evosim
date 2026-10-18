@@ -353,7 +353,8 @@
           <button id="sim-resume" disabled>Продовжити</button>
           <button id="sim-stop" disabled>Стоп</button>
         </div>
-        <p class="small warn" style="margin-bottom:0">Запуск навчання з'являється на етапі 3 (генетичний алгоритм).</p>
+        <p class="small muted" id="train-msg" style="margin-bottom:0">Навчання бере вибрані вище
+          збережені сутності й параметри з цієї панелі.</p>
       </div>
     </aside>
     <div class="canvas-wrap">
@@ -365,6 +366,7 @@
           <span class="muted small" id="hud-run"></span>
           <span class="spacer"></span>
           <button id="live-start" class="primary" title="POST /api/preview — епізод із тестовою синусоїдою (§2.4)">Тест-заплив</button>
+          <button id="live-best" disabled title="POST /api/preview {source:'best'} — найкращий геном поточного прогону; навчання не зупиняється">Найкраща особина</button>
           <button id="live-stop" disabled>Зупинити</button>
           <select id="live-speed" title="speed — множник темпу відтворення">
             <option value="0.25">×0.25</option>
@@ -380,6 +382,7 @@
           <span class="mono" id="live-t">t 0.0 с</span>
           <span class="mono" id="live-disp">зміщення 0.00</span>
           <span class="mono" id="live-speed-v">|v| 0.00</span>
+          <span class="mono" id="live-fit" title="fitness_running і компоненти §7.1, активні на цьому етапі">F —</span>
           <span class="mono muted" id="live-episode">епізод 1</span>
           <span class="spacer"></span>
           <span class="small muted" id="live-conn">канал: —</span>
@@ -404,6 +407,17 @@
         </div>
       </div>
       <div class="group">
+        <h3>Навчання</h3>
+        <canvas id="fit-chart" class="chart" title="найкращий (м'ятний) і середній (синій) фітнес по поколіннях"></canvas>
+        <div class="kv" style="margin-top:6px">
+          <span>найкращий F</span><span id="tr-best">—</span>
+          <span>середній F</span><span id="tr-avg">—</span>
+          <span title="diversity, §6.2">різноманіття</span><span id="tr-div">—</span>
+          <span title="eval_seconds">оцінка покоління</span><span id="tr-eval">—</span>
+          <span title="sim_fps_equivalent — фізичних кроків за секунду, усі процеси разом">кроків / с</span><span id="tr-fps">—</span>
+        </div>
+      </div>
+      <div class="group">
         <h3>Що буде еволюціонувати</h3>
         <div class="kv">
           <span>суглобів</span><span id="sim-joints">—</span>
@@ -413,7 +427,8 @@
         </div>
         <p class="small muted" style="margin:8px 0 0">«Тест-заплив» запускає епізод
           із контролером-синусоїдою (§2.4) — це базова лінія, з якою порівнюється
-          навчена істота.</p>
+          навчена істота. «Найкраща особина» показує рекорд поточного прогону й
+          сама підхоплює новий на початку кожного кола епізоду.</p>
       </div>
       <div class="group" style="flex:1; min-height:0">
         <h3>Конфігурація прогону</h3>

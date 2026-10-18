@@ -77,8 +77,10 @@ export function connect(path, { onPacket, onFrame, onState } = {}) {
     });
 
     socket.addEventListener('close', () => {
+      // Закрили самі — не повідомляємо «перепідключення»: його не буде
+      if (closedByUs) return;
       onState?.('closed');
-      if (!closedByUs) scheduleReconnect();
+      scheduleReconnect();
     });
 
     // 'error' завжди супроводжується 'close' — перепідключення планує саме він

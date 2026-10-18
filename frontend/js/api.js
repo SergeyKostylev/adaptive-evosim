@@ -56,10 +56,29 @@ export const validatePredator = (predator) =>
 /** GET /api/simulation/status → {state, run_id?, generation, population, elapsed_s, mode} */
 export const getStatus = () => request('/simulation/status');
 
+// --- Керування ГА (§9.4) ------------------------------------------------------
+/** POST /api/simulation/start {ExperimentConfig} → {run_id, state}; 409, якщо вже запущено */
+export const startSimulation = (config) =>
+  request('/simulation/start', { method: 'POST', body: config });
+
+/** POST /api/simulation/pause → {state:'PAUSED'} — пауза між поколіннями */
+export const pauseSimulation = () => request('/simulation/pause', { method: 'POST' });
+
+/** POST /api/simulation/resume → {state:'RUNNING'} */
+export const resumeSimulation = () => request('/simulation/resume', { method: 'POST' });
+
+/** POST /api/simulation/stop → {state:'STOPPED', run_id} */
+export const stopSimulation = () => request('/simulation/stop', { method: 'POST' });
+
+/** GET /api/metrics/generations → {run_id, rows:[GenerationStats]} (§9.6) */
+export const getGenerations = (runId, fromGen = 0) =>
+  request(`/metrics/generations?run_id=${encodeURIComponent(runId)}&from_gen=${fromGen}`);
+
 // --- Живий перегляд (§9.4) --------------------------------------------------
 /**
  * POST /api/preview — стартує live-епізод; кадри йдуть у /ws/live.
- * На етапі 2 доступне лише `source: 'demo'` (контролер-синусоїда, §2.4).
+ * `source`: 'demo' (синусоїда, §2.4), 'genome' (геном у тілі), 'best'
+ * (найкращий геном прогону `run_id`); 'live_training' — етап 4.
  */
 export const startPreview = (body) =>
   request('/preview', { method: 'POST', body });

@@ -46,8 +46,8 @@ def test_spec_scene_roundtrip():
 def test_n_joints_counts_every_segment(demo_creature):
     creature = CreatureConfig.model_validate(demo_creature)
     assert creature.n_joints == 4
-    assert creature.n_in == C.n_in_from_joints(4) == 46
-    assert creature.genome_size == C.genome_size(46, 4)
+    assert creature.n_in == C.n_in_from_joints(4)
+    assert creature.genome_size == C.genome_size(creature.n_in, 4)
 
 
 def test_creature_hash_ignores_name_but_tracks_morphology(demo_creature):

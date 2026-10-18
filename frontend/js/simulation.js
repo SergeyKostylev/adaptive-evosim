@@ -5,6 +5,9 @@
  *
  * Важливо: конфіг зберігає **копії**, а не назви. Прогін має лишатися
  * відтворюваним (§11), навіть якщо потім змінити істоту чи хижака в бібліотеці.
+ *
+ * Керування навчанням і лінія фітнесу — у `hud/hud.js`; звідси він отримує
+ * лише готовий конфіг (`runForStart`).
  */
 
 import {
@@ -17,6 +20,7 @@ import { createPreview, renderSceneThumb } from './render/renderer.js';
 import { themeColors } from './render/shapes.js';
 import { renderCreatureThumb } from './editor/creature_editor.js';
 import { renderPredatorThumb } from './editor/predator_editor.js';
+import { initTraining } from './hud/hud.js';
 
 const $ = (s) => document.querySelector(s);
 const EMPTY = '__none__';
@@ -287,6 +291,11 @@ function setSummary(text) {
 let socket = null;
 /** Що саме зараз показуємо наживо — щоб зміна темпу перезапустила те саме. */
 let liveRequest = null;
+/** Прогін, чию найкращу особину можна показати (з'являється після 1-го покоління). */
+let bestRunId = null;
+
+/** Активні на етапі компоненти — сервер шле всі шість, неактивні нулями (§7.1). */
+const SHOWN_COMPONENTS = ['D', 'Pas', 'E_n'];
 
 const liveSpeed = () => Number($('#live-speed')?.value ?? 1);
 
@@ -315,6 +324,10 @@ function openSocket() {
       $('#live-t').textContent = `t ${(frame.t ?? 0).toFixed(1)} с`;
       $('#live-disp').textContent = `зміщення ${(hud.displacement ?? 0).toFixed(2)}`;
       $('#live-speed-v').textContent = `|v| ${(hud.speed ?? 0).toFixed(2)}`;
+      const comps = hud.components ?? {};
+      $('#live-fit').textContent = hud.fitness_running == null ? 'F —'
+        : `F ${hud.fitness_running.toFixed(3)} · `
+          + SHOWN_COMPONENTS.map((k) => `${k} ${(comps[k] ?? 0).toFixed(2)}`).join(' ');
       $('#live-episode').textContent = `епізод ${(frame.episode ?? 0) + 1}`;
     },
     onState: showConnection,
@@ -328,36 +341,24 @@ function closeSocket() {
 }
 
 /**
- * Запускає епізод із тестовою синусоїдою. `creature`/`environment` — копії,
- * бо прев'ю не має залежати від подальших правок у редакторі.
+ * Запускає live-епізод (`body` — тіло `POST /api/preview` без темпу).
  *
- * `origin` — звідки взято сутності («чернетка» чи «збережене»): це єдине, що
- * справді розрізняє дві кнопки «Тест-заплив», і єдине, чого немає в панелі
- * праворуч. Назва істоти, ідентифікатор прев'ю та контролер туди не йдуть:
- * назва вже є в панелі, контролер на етапі 2 завжди один (§2.4), а `pv-…`
- * потрібен лише для налагодження — усе це лишається в `title`.
+ * `origin` — звідки взято те, що пливе («чернетка», «збережене» чи
+ * «найкраща»): це єдине, що розрізняє кнопки запуску, і єдине, чого немає в
+ * панелі праворуч. Назва істоти, ідентифікатор прев'ю та контролер туди не
+ * йдуть: назва вже є в панелі, а `pv-…` потрібен лише для налагодження — усе
+ * це лишається в `title`.
  */
-export async function startDemoPreview(creature, environment, { origin } = {}) {
-  if (!creature?.limbs?.length) {
-    $('#sim-warn').textContent = 'тест-заплив неможливий: в істоти немає жодної кінцівки';
-    return null;
-  }
-  liveRequest = { creature: clone(creature), environment: clone(environment ?? {}), origin };
+async function startLive(body, { origin, label }) {
+  liveRequest = { body, origin, label };
   try {
-    const res = await startPreview({
-      source: 'demo',
-      creature: liveRequest.creature,
-      environment: liveRequest.environment,
-      speed: liveSpeed(),
-      loop: true,
-    });
+    const res = await startPreview({ ...body, speed: liveSpeed(), loop: true });
     openSocket();
     setLiveUi(true);
-    const name = creature.name || 'істота';
     const run = $('#hud-run');
     run.textContent = origin ?? '';
-    run.title = `${name} · ${origin ?? 'прев\'ю'} · ${res.preview_id} · `
-      + `контролер-синусоїда (§2.4) · епізод ${res.episode_seconds} с`;
+    run.title = `${label} · ${origin ?? 'прев\'ю'} · ${res.preview_id} · `
+      + `епізод ${res.episode_seconds} с`;
     $('#sim-warn').textContent = '';
     return res;
   } catch (e) {
@@ -366,6 +367,41 @@ export async function startDemoPreview(creature, environment, { origin } = {}) {
       ? `не вдалося запустити прев'ю: ${e.message}` : String(e);
     return null;
   }
+}
+
+/**
+ * Епізод із тестовою синусоїдою. `creature`/`environment` — копії, бо прев'ю
+ * не має залежати від подальших правок у редакторі.
+ */
+export async function startDemoPreview(creature, environment, { origin } = {}) {
+  if (!creature?.limbs?.length) {
+    $('#sim-warn').textContent = 'тест-заплив неможливий: в істоти немає жодної кінцівки';
+    return null;
+  }
+  return startLive(
+    { source: 'demo', creature: clone(creature), environment: clone(environment ?? {}) },
+    { origin, label: `${creature.name || 'істота'} · контролер-синусоїда (§2.4)` },
+  );
+}
+
+/** Найкращий геном прогону; сервер сам підхоплює новий рекорд на кожному колі. */
+async function startBestPreview() {
+  if (!bestRunId) return null;
+  return startLive({ source: 'best', run_id: bestRunId },
+    { origin: 'найкраща', label: `прогін ${bestRunId} · мозок із геному` });
+}
+
+/**
+ * Конфіг для `POST /api/simulation/start` або причина, чому стартувати не можна.
+ * Як і для прев'ю, беруться лише **збережені** сутності — чернетка редактора
+ * в прогін не потрапляє (§11).
+ */
+async function runForStart() {
+  await resolve();
+  const gaps = missing();
+  if (gaps.length) return { problem: `щоб почати навчання, вибери збережені: ${gaps.join(', ')}` };
+  const { config } = assembleExperiment();
+  return { config };
 }
 
 export async function stopLivePreview() {
@@ -405,11 +441,12 @@ export async function initSimulationPicker() {
     const { config } = assembleExperiment();
     await startDemoPreview(config.creature, config.environment, { origin: 'збережене' });
   });
+  $('#live-best').addEventListener('click', () => startBestPreview());
   // Темп змінюється на сервері (пауза між кадрами), тож прев'ю перезапускається
   $('#live-speed').addEventListener('change', () => {
     if (liveRequest) {
-      startDemoPreview(liveRequest.creature, liveRequest.environment,
-        { origin: liveRequest.origin });
+      const { body, origin, label } = liveRequest;
+      startLive(body, { origin, label });
     }
   });
   // Чернетка з редактора: кнопка там, а канал тут — редактор не знає про вкладки
@@ -438,4 +475,12 @@ export async function initSimulationPicker() {
     await refreshExperimentPreview();
   });
   await refreshExperimentPreview();
+  await initTraining({
+    theme: colors,
+    getRun: runForStart,
+    onChange: (run) => {
+      bestRunId = run.runId && run.rows.length ? run.runId : null;
+      $('#live-best').disabled = !bestRunId;
+    },
+  });
 }

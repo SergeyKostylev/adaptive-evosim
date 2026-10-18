@@ -25,14 +25,26 @@ def test_validate_returns_derived_values(client, demo_creature):
     body = r.json()
     assert body["valid"] is True and body["errors"] == []
     assert body["n_joints"] == 4
-    assert body["n_in"] == 46                      # §4.4: 24 + 3 + 3·4 + 7
     assert body["n_in"] == C.n_in_from_joints(4)
-    assert body["genome_size"] == C.genome_size(46, 4)
+    assert body["genome_size"] == C.genome_size(body["n_in"], 4)
     assert body["creature_hash"].startswith("sha256:")
 
 
-def test_single_limb_two_segments_matches_spec_example(client):
-    """§9.1: 1 кінцівка × 2 сегменти → n_joints=2, n_in=40."""
+def test_n_in_counts_only_enabled_sensor_groups(monkeypatch):
+    """§4.4, етапність: вимкнена група випадає з N_in; усі ввімкнені — повна формула."""
+    monkeypatch.setattr(C, "SENSE_RADAR", False)
+    monkeypatch.setattr(C, "SENSE_AURA", False)
+    assert C.n_in_from_joints(4) == 19              # етап 3: 3·4 + 5 + 2
+    monkeypatch.setattr(C, "SENSE_RADAR", True)
+    monkeypatch.setattr(C, "SENSE_AURA", True)
+    assert C.n_in_from_joints(4) == 46              # §4.4: 24 + 3 + 3·4 + 7
+    assert C.n_in_from_joints(2) == 40
+
+
+def test_single_limb_two_segments_matches_spec_example(client, monkeypatch):
+    """§9.1: 1 кінцівка × 2 сегменти → n_joints=2, n_in=40 (з усіма сенсорами)."""
+    monkeypatch.setattr(C, "SENSE_RADAR", True)
+    monkeypatch.setattr(C, "SENSE_AURA", True)
     creature = {
         "body": {"shape": "circle", "radius": 0.8, "density": 1.0},
         "limbs": [

@@ -61,7 +61,12 @@ N_PROPRIO_BODY: int = 5           # [vx, vy, ω, sin φ, cos φ]
 N_OSC: int = 2                    # [sin, cos]
 N_AURA: int = 3                   # [aura, aura·sin(bear), aura·cos(bear)]
 N_RAY_CHANNELS: int = 2           # d_obs, d_pred
-N_JOINT_CHANNELS: int = 3         # sin θ, cos θ, ω/OMEGA_MAX
+N_JOINT_CHANNELS: int = 3         # sin ψ, cos ψ, ω/OMEGA_MAX
+#: Увімкнені групи сенсорів (§4.4, етапність). Пропріоцепція й осцилятор
+#: увімкнені завжди; радар і аура приходять на етапі 4 разом із хижаком.
+#: Від них залежить `N_in`, а отже й розмір геному.
+SENSE_RADAR: bool = False
+SENSE_AURA: bool = False
 
 # --- Мозок (§5) ------------------------------------------------------------
 HIDDEN_1: int = 16
@@ -82,6 +87,12 @@ GA_EPISODES_PER_INDIVIDUAL: int = 2
 GA_EPISODE_SECONDS: float = 30.0
 GA_DIVERSITY_SAMPLE: int = 20
 GA_CHECKPOINT_EVERY: int = 25
+#: Процесів оцінки: env `WORKERS_EVAL` (§12), 0 = auto (`cpu_count − 1`);
+#: 1 — оцінка в тому самому процесі, без пулу (тести, налагодження)
+WORKERS_EVAL: int = int(os.getenv("WORKERS_EVAL", "0"))
+#: Скільки задач пулу припадає на воркера за покоління: дрібніші чанки
+#: вирівнюють навантаження, але кожен коштує пересилання між процесами
+EVAL_CHUNKS_PER_WORKER: int = 4
 
 # --- Фітнес (§7.1) ---------------------------------------------------------
 W_SURVIVAL: float = 3.0
@@ -94,6 +105,10 @@ D_NORM: float = 20.0              # нормалізація чистого зм
 V_MIN_PASSIVITY: float = 0.3      # v_min у компоненті Pas
 N_HITS_NORM: int = 10             # нормалізація кількості контактів
 COLLISION_DEBOUNCE: float = 0.25  # с, на пару шейпів
+#: Компоненти, що входять у F на поточному етапі (§7.1, етапність); решта
+#: звітуються як 0. Етап 4 додає S, G_aura, C.
+FITNESS_COMPONENTS: frozenset[str] = frozenset({"D", "Pas", "E_n"})
+FITNESS_KEYS: tuple[str, ...] = ("S", "D", "G_aura", "C", "Pas", "E_n")
 
 # --- Хижак (§8.1) ----------------------------------------------------------
 PREDATOR_ENABLED: bool = True
@@ -124,15 +139,18 @@ RUNS_SUBDIR: str = "runs"
 EDITOR_SUBDIR: str = "editor"       # стан конструктора між сеансами
 RUNS_DIR: str = "experiments/runs"
 RUN_ID_TIME_FMT: str = "%Y%m%d-%H%M"
+#: Скільки останніх подій тримає черга клієнта `/ws/metrics`
+METRICS_QUEUE_DEPTH: int = 256
 PLOT_DPI: int = 200
 
 
 # --- Похідні величини (§4.4, §5) -------------------------------------------
 def n_in_from_joints(n_joints: int) -> int:
-    """N_in = N_rays·2 + 3 + N_joints·3 + 5 + 2 (§4.4)."""
+    """N_in = N_rays·2 + 3 + N_joints·3 + 5 + 2 (§4.4) — лише за увімкненими
+    групами сенсорів: вимкнена група з вектора входів просто випадає."""
     return (
-        N_RAYS * N_RAY_CHANNELS
-        + N_AURA
+        (N_RAYS * N_RAY_CHANNELS if SENSE_RADAR else 0)
+        + (N_AURA if SENSE_AURA else 0)
         + n_joints * N_JOINT_CHANNELS
         + N_PROPRIO_BODY
         + N_OSC

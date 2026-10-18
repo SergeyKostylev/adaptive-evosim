@@ -1,12 +1,14 @@
 """FastAPI-застосунок: REST + WebSocket-канали (§9.4–9.6).
 
 Етапи 1–2: валідація сутностей, бібліотеки конструктора, живий перегляд
-(`POST /api/preview` + `/ws/live`). Керування ГА (`/api/simulation/*`,
-`/ws/metrics`) з'являється на етапі 3.
+(`POST /api/preview` + `/ws/live`). Етап 3: керування ГА (`/api/simulation/*`),
+метрики поколінь (`/api/metrics/generations`, `/ws/metrics`), найкращий геном
+і прев'ю геному (`source: "genome" | "best"`).
 """
 
 from __future__ import annotations
 
+import asyncio
 import os
 from pathlib import Path
 
@@ -26,6 +28,10 @@ from .schemas import (
     EditorState,
     EditorStateResponse,
     EnvironmentConfig,
+    ExperimentConfig,
+    GenerationRows,
+    GenerationStats,
+    GenomeJSON,
     PredatorLibrary,
     PredatorMeta,
     PredatorParams,
@@ -37,9 +43,14 @@ from .schemas import (
     PreviewState,
     SavedCreature,
     SavedPredator,
+    SimulationControlResponse,
     SimulationStatus,
 )
+from .evolution import genome as genome_ops
 from .services import editor_store, live_stream
+from .services.experiment_store import RunNotFound, RunStore
+from .services.sim_manager import SimulationConflict
+from .services.sim_manager import manager as sim
 
 app = FastAPI(
     title="Adaptive EvoSim API",
@@ -136,13 +147,104 @@ async def validate_predator(payload: dict) -> PredatorValidationResponse:
     )
 
 
+# --- Керування ГА (§9.4) ------------------------------------------------------
+def _conflict(exc: Exception) -> StarletteHTTPException:
+    return StarletteHTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc))
+
+
+def _open_run(run_id: str | None) -> RunStore:
+    """Прогін за `run_id`; без нього — поточний (або останній) прогін менеджера."""
+    run_id = run_id or sim.run_id
+    if not run_id:
+        raise StarletteHTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                                     detail="Жодного прогону ще не запускали")
+    try:
+        return RunStore.open(run_id)
+    except RunNotFound as exc:
+        raise StarletteHTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+
+
+@app.post("/api/simulation/start", response_model=SimulationControlResponse)
+async def simulation_start(payload: ExperimentConfig) -> SimulationControlResponse:
+    """Стартує прогін у фоновому потоці; `409`, якщо вже запущено."""
+    try:
+        run_id = sim.start(payload)
+    except SimulationConflict as exc:
+        raise _conflict(exc)
+    return SimulationControlResponse(state=sim.state, run_id=run_id)
+
+
+@app.post("/api/simulation/pause", response_model=SimulationControlResponse)
+async def simulation_pause() -> SimulationControlResponse:
+    """Пауза між поколіннями: поточне покоління дооцінюється й записується."""
+    try:
+        sim.pause()
+    except SimulationConflict as exc:
+        raise _conflict(exc)
+    return SimulationControlResponse(state=sim.state, run_id=sim.run_id)
+
+
+@app.post("/api/simulation/resume", response_model=SimulationControlResponse)
+async def simulation_resume() -> SimulationControlResponse:
+    try:
+        sim.resume()
+    except SimulationConflict as exc:
+        raise _conflict(exc)
+    return SimulationControlResponse(state=sim.state, run_id=sim.run_id)
+
+
+@app.post("/api/simulation/stop", response_model=SimulationControlResponse)
+async def simulation_stop() -> SimulationControlResponse:
+    """Зупиняє прогін (поточне покоління відкидається) і чекає завершення потоку."""
+    await asyncio.to_thread(sim.stop)
+    return SimulationControlResponse(state=sim.state, run_id=sim.run_id)
+
+
 @app.get("/api/simulation/status", response_model=SimulationStatus)
 async def simulation_status() -> SimulationStatus:
-    """Заглушка етапу 1: справжній стан з'явиться разом із SimulationManager (етап 3)."""
     return SimulationStatus(
-        state="STOPPED",
+        state=sim.state,
+        run_id=sim.run_id,
+        generation=sim.generation,
+        population=sim.population,
+        elapsed_s=sim.elapsed_s,
         mode="live" if live_stream.manager.active else "headless",
     )
+
+
+@app.get("/api/metrics/generations", response_model=GenerationRows)
+async def metrics_generations(run_id: str | None = None, from_gen: int = 0) -> GenerationRows:
+    store = _open_run(run_id)
+    return GenerationRows(
+        run_id=store.run_id,
+        rows=[GenerationStats.model_validate(r) for r in store.read_generations(from_gen)],
+    )
+
+
+@app.get("/api/genome/best", response_model=GenomeJSON)
+async def genome_best(run_id: str | None = None) -> GenomeJSON:
+    store = _open_run(run_id)
+    data = store.load_best_genome()
+    if data is None:
+        raise StarletteHTTPException(status_code=status.HTTP_404_NOT_FOUND,
+                                     detail=f"У прогоні {store.run_id} ще немає оціненого покоління")
+    return GenomeJSON.model_validate(data)
+
+
+@app.websocket("/ws/metrics")
+async def ws_metrics(websocket: WebSocket) -> None:
+    """Події прогону (§9.6): пакет `state` одразу й на кожну зміну, `generation` —
+    після кожного покоління. Історію клієнт бере з `GET /api/metrics/generations`."""
+    await websocket.accept()
+    queue = sim.hub.subscribe()
+    try:
+        await websocket.send_json(sim.state_packet())
+        while True:
+            await websocket.send_json(await queue.get())
+    except WebSocketDisconnect:
+        pass
+    finally:
+        sim.hub.unsubscribe(queue)
 
 
 # --- Живий перегляд (§9.4, §9.5) -------------------------------------------
@@ -150,25 +252,57 @@ async def simulation_status() -> SimulationStatus:
 async def start_preview(payload: PreviewRequest) -> PreviewResponse:
     """Стартує live-епізод; кадри йдуть у `/ws/live`.
 
-    Етап 2 реалізує лише `source:"demo"` — сцену з тестовим контролером-
-    синусоїдою (§2.4). Решта джерел потребують геному й з'являться з ГА.
+    `demo` — тестова синусоїда (§2.4); `genome` — геном із тіла запиту;
+    `best` — найкращий геном прогону: істота й сцена беруться зі знімка
+    прогону, а сам геном перечитується на кожне нове коло епізоду, тож
+    прев'ю під час навчання саме підхоплює свіжий рекорд. `live_training` —
+    етап 4.
     """
-    if payload.source != "demo":
+    if payload.source == "live_training":
         raise StarletteHTTPException(
             status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail=f"source='{payload.source}' з'явиться на етапі "
-                   f"{'3' if payload.source in ('genome', 'best') else '4'}; "
-                   f"зараз доступний лише 'demo'",
+            detail="source='live_training' з'явиться на етапі 4",
         )
 
-    creature = payload.creature
-    environment = payload.environment or EnvironmentConfig()
+    if payload.source == "best":
+        store = _open_run(payload.run_id)
+        run_cfg = store.load_config()
+        creature, environment, weights = (
+            run_cfg.creature, run_cfg.environment, run_cfg.fitness_weights)
+        if store.load_best_genome() is None:
+            raise StarletteHTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"У прогоні {store.run_id} ще немає оціненого покоління")
+
+        def current_genome():
+            return genome_ops.from_json(store.load_best_genome(), creature)
+
+        try:
+            current_genome()
+        except genome_ops.GenomeMismatch as exc:
+            # Прогін іншого етапу: набір сенсорів (`n_in`) відтоді змінився
+            raise StarletteHTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+    else:
+        creature = payload.creature
+        environment = payload.environment or EnvironmentConfig()
+        weights = None
+        fixed = None
+        if payload.source == "genome":
+            try:
+                fixed = genome_ops.from_json(payload.genome, creature)
+            except genome_ops.GenomeMismatch as exc:
+                raise StarletteHTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+
+        def current_genome():
+            return fixed
 
     def make_world() -> World:
         return World(
-            creature, environment, seed=payload.seed,
+            creature, environment, genome=current_genome(), seed=payload.seed,
             episode_seconds=payload.episode_seconds,
-            spawn_index=payload.spawn_index,
+            spawn_index=payload.spawn_index, weights=weights,
         )
 
     session = live_stream.PreviewSession(
