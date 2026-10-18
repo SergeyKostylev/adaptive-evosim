@@ -1,0 +1,103 @@
+{
+  "name": "dod3-demo",
+  "seed": 42,
+  "creature": {
+    "name": "swimmer-v1",
+    "body": {
+      "shape": "circle",
+      "radius": 0.8,
+      "vertices": null,
+      "density": 1.0
+    },
+    "limbs": [
+      {
+        "attach_angle": 2.3562,
+        "rest_angle": 0.0,
+        "segments": [
+          {
+            "length": 1.2,
+            "width": 0.18,
+            "density": 1.0,
+            "joint": {
+              "angle_min": -1.2,
+              "angle_max": 1.2,
+              "motor_torque": 120.0
+            }
+          },
+          {
+            "length": 0.9,
+            "width": 0.12,
+            "density": 1.0,
+            "joint": {
+              "angle_min": -1.5,
+              "angle_max": 1.5,
+              "motor_torque": 80.0
+            }
+          }
+        ]
+      },
+      {
+        "attach_angle": -2.3562,
+        "rest_angle": 0.0,
+        "segments": [
+          {
+            "length": 1.2,
+            "width": 0.18,
+            "density": 1.0,
+            "joint": {
+              "angle_min": -1.2,
+              "angle_max": 1.2,
+              "motor_torque": 120.0
+            }
+          },
+          {
+            "length": 0.9,
+            "width": 0.12,
+            "density": 1.0,
+            "joint": {
+              "angle_min": -1.5,
+              "angle_max": 1.5,
+              "motor_torque": 80.0
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "environment": {
+    "world": {
+      "width": 60.0,
+      "height": 40.0
+    },
+    "fluid": {
+      "rho": 1.0,
+      "c_d_perp": 2.0,
+      "c_d_par": 0.1,
+      "c_l": 0.5,
+      "linear_damping": 0.98
+    },
+    "spawns": [],
+    "predators": [],
+    "obstacles": []
+  },
+  "ga": {
+    "population": 100,
+    "generations": 50,
+    "elitism": 2,
+    "tournament_k": 3,
+    "p_crossover": 0.9,
+    "crossover": "uniform",
+    "p_mutation": 0.05,
+    "mutation_sigma": 0.15,
+    "episodes_per_individual": 2,
+    "episode_seconds": 30.0
+  },
+  "fitness_weights": {
+    "survival": 3.0,
+    "distance": 1.5,
+    "danger": 2.0,
+    "collision": 1.0,
+    "passivity": 1.0,
+    "energy": 0.3
+  }
+}
