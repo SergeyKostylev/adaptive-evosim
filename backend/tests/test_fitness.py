@@ -1,7 +1,9 @@
 """Компоненти фітнесу на синтетичних траєкторіях, без фізики (§7, §15).
 
-Етап 3 покриває `D`, `Pas`, `E_n` і склад формули; `S`, `G_aura`, `C`
-додаються разом із хижаком на етапі 4.
+Етап 3 покрив `D`, `Pas`, `E_n` і склад формули; етап 4 — `S`, `G_aura`,
+`C` з дебаунсом. Сценарії PLAN.md: нерухома → `Pas = 1`; у центрі аури весь
+епізод → `G_aura ≈ 1`; спіймання на 15 с → `S = 0.5`. Ті самі події в повному
+`World` — у `test_predator_sensors.py`.
 """
 
 from __future__ import annotations
@@ -17,10 +19,10 @@ STEPS = round(T / C.DT)
 
 
 def run(speed: float, u_abs_sum: float, n_joints: int = 4, steps: int = STEPS,
-        active=frozenset(C.FITNESS_KEYS)) -> FitnessAccumulator:
+        active=frozenset(C.FITNESS_KEYS), aura: float = 0.0) -> FitnessAccumulator:
     acc = FitnessAccumulator(T, n_joints, (0.0, 0.0), active=active)
     for _ in range(steps):
-        acc.step(speed, u_abs_sum)
+        acc.step(speed, u_abs_sum, aura)
     return acc
 
 
@@ -79,5 +81,49 @@ def test_inactive_components_reported_as_zero_and_excluded():
                               - w.energy * comps["E_n"])
 
 
-def test_stage3_active_set():
-    assert C.FITNESS_COMPONENTS == {"D", "Pas", "E_n"}
+def test_stage4_all_components_active():
+    assert C.FITNESS_COMPONENTS == set(C.FITNESS_KEYS)
+
+
+def test_survival_is_fraction_of_episode_alive():
+    """Спіймання на 15 с із 30 → `S = 0.5`; дожив до кінця → `S = 1`."""
+    caught = run(1.0, 0.0, steps=STEPS // 2)
+    assert caught.components(15.0, (0, 0))["S"] == pytest.approx(0.5)
+    assert run(1.0, 0.0).components(T, (0, 0))["S"] == 1.0
+
+
+def test_aura_center_whole_episode_gives_full_danger():
+    assert run(1.0, 0.0, aura=1.0).components(T, (0, 0))["G_aura"] == pytest.approx(1.0)
+    assert run(1.0, 0.0, aura=0.25).components(T, (0, 0))["G_aura"] == pytest.approx(0.25)
+    assert run(1.0, 0.0).components(T, (0, 0))["G_aura"] == 0.0
+
+
+def test_danger_normalized_by_episode_not_lifetime():
+    """Спіймали на половині, весь час був у центрі аури → `G_aura = 0.5`."""
+    acc = run(1.0, 0.0, steps=STEPS // 2, aura=1.0)
+    assert acc.components(T / 2, (0, 0))["G_aura"] == pytest.approx(0.5)
+
+
+def test_collisions_debounced_per_obstacle_and_saturate():
+    acc = FitnessAccumulator(T, 4, (0.0, 0.0))
+    wall, rock = object(), object()
+    assert acc.hit(wall, 1.0)
+    assert not acc.hit(wall, 1.0 + C.COLLISION_DEBOUNCE / 2)   # відскок тієї самої пари
+    assert acc.hit(rock, 1.1)                                  # інша перешкода — свій лік
+    assert acc.hit(wall, 1.0 + C.COLLISION_DEBOUNCE)
+    assert acc.components(T, (0, 0))["C"] == pytest.approx(3 / C.N_HITS_NORM)
+    for i in range(50):
+        acc.hit(wall, 10.0 + i)
+    assert acc.components(T, (0, 0))["C"] == 1.0
+
+
+def test_full_formula_on_synthetic_episode():
+    """Повна формула §7.1: усі шість компонентів зі своїми знаками й вагами."""
+    acc = run(C.V_MIN_PASSIVITY / 2, 2.0, steps=STEPS // 2, aura=0.5)
+    acc.hit("a", 0.0)
+    f, comps = acc.result(T / 2, (10.0, 0.0))
+    w = FitnessWeights()
+    assert comps == pytest.approx({"S": 0.5, "D": 0.5, "G_aura": 0.25, "C": 0.1,
+                                   "Pas": 0.5, "E_n": 0.25})
+    assert f == pytest.approx(w.survival * 0.5 + w.distance * 0.5 - w.danger * 0.25
+                              - w.collision * 0.1 - w.passivity * 0.5 - w.energy * 0.25)

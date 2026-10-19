@@ -158,6 +158,39 @@ def test_preview_best_genome_while_training(client, demo_creature):
     client.post("/api/simulation/stop")
 
 
+def test_live_training_follows_latest_generation(client, demo_creature):
+    """Перемикач Headless ↔ Live (§9.4): прев'ю поточного найкращого, навчання не спиняється."""
+    client.post("/api/simulation/start", json=experiment(demo_creature, generations=500))
+    deadline = time.monotonic() + 30
+    while client.get("/api/simulation/status").json()["generation"] < 1:
+        assert time.monotonic() < deadline
+        time.sleep(0.05)
+
+    r = client.post("/api/preview", json={"source": "live_training", "speed": 8.0})
+    assert r.status_code == 200, r.text
+    assert r.json()["episode_seconds"] == 0.5          # горизонт прогону, не 30 с прев'ю
+    assert client.get("/api/simulation/status").json()["mode"] == "live"
+    with client.websocket_connect("/ws/live") as ws:
+        assert ws.receive_json()["source"] == "live_training"
+        episodes, generations = set(), set()
+        while len(episodes) < 3:
+            packet = ws.receive_json()
+            if packet["type"] == "frame":
+                episodes.add(packet["episode"])
+                generations.add(packet["hud"]["generation"])
+    assert None not in generations and min(generations) >= 1
+
+    before = client.get("/api/simulation/status").json()["generation"]
+    deadline = time.monotonic() + 30
+    while client.get("/api/simulation/status").json()["generation"] <= before:
+        assert time.monotonic() < deadline
+        time.sleep(0.05)
+    assert client.delete("/api/preview").json()["active"] is False
+    status = client.get("/api/simulation/status").json()
+    assert status["state"] == "RUNNING" and status["mode"] == "headless"
+    client.post("/api/simulation/stop")
+
+
 def test_preview_genome_from_body(client, demo_creature):
     validated = client.post("/api/creature/validate", json=demo_creature).json()
     genome = {"creature_hash": validated["creature_hash"], "n_in": validated["n_in"],

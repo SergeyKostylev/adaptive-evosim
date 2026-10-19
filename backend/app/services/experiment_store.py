@@ -20,9 +20,12 @@ from pathlib import Path
 from .. import config as C
 from ..schemas import ExperimentConfig
 
+#: Частки спійманих з'явились на етапі 4 — у кінці рядка, щоб старші
+#: `metrics.csv` лишались префіксом формату (§9.6)
+CAUGHT_FIELDS: tuple[str, ...] = ("caught_top10", "caught_all")
 METRICS_FIELDS: tuple[str, ...] = (
     "generation", "best_fitness", "avg_fitness", "std_fitness", "diversity",
-    *C.FITNESS_KEYS,
+    *C.FITNESS_KEYS, *CAUGHT_FIELDS,
 )
 TIMING_FIELDS: tuple[str, ...] = ("generation", "eval_seconds", "sim_fps_equivalent")
 
@@ -189,6 +192,9 @@ class RunStore:
                 "std_fitness": float(r["std_fitness"]),
                 "diversity": float(r["diversity"]),
                 "best_components": {k: float(r[k]) for k in C.FITNESS_KEYS},
+                # У прогонах етапу 3 цих колонок немає — невідомо, а не нуль
+                **{k: float(r[k]) if r.get(k) not in (None, "") else None
+                   for k in CAUGHT_FIELDS},
                 "eval_seconds": float(t.get("eval_seconds", 0.0)),
                 "sim_fps_equivalent": float(t.get("sim_fps_equivalent", 0.0)),
             })

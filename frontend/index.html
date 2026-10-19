@@ -202,10 +202,10 @@
         <div class="row"><label title="r_body — радіус тіла (§8.1)">Розмір (радіус)
           <b class="mono" id="pred-rbody-v">0.80</b></label>
           <input type="range" id="pred-rbody" min="0.2" max="3" step="0.05" value="0.8"></div>
-        <div class="row"><label title="v_patrol">Швидк. патруля <b class="mono" id="pred-vpatrol-v">2.00</b></label>
-          <input type="range" id="pred-vpatrol" min="0.2" max="8" step="0.1" value="2"></div>
-        <div class="row"><label title="v_chase">Швидк. погоні <b class="mono" id="pred-vchase-v">3.50</b></label>
-          <input type="range" id="pred-vchase" min="0.2" max="12" step="0.1" value="3.5"></div>
+        <div class="row"><label title="v_patrol">Швидк. патруля <b class="mono" id="pred-vpatrol-v">0.50</b></label>
+          <input type="range" id="pred-vpatrol" min="0.1" max="8" step="0.05" value="0.5"></div>
+        <div class="row"><label title="v_chase">Швидк. погоні <b class="mono" id="pred-vchase-v">0.90</b></label>
+          <input type="range" id="pred-vchase" min="0.1" max="12" step="0.05" value="0.9"></div>
         <div class="row"><label title="r_detect">Радіус виявлення <b class="mono" id="pred-rdetect-v">8.00</b></label>
           <input type="range" id="pred-rdetect" min="1" max="25" step="0.1" value="8"></div>
         <div class="row"><label title="r_aura">Аура, радіус <b class="mono" id="pred-raura-v">5.00</b></label>
@@ -366,7 +366,8 @@
           <span class="muted small" id="hud-run"></span>
           <span class="spacer"></span>
           <button id="live-start" class="primary" title="POST /api/preview — епізод із тестовою синусоїдою (§2.4)">Тест-заплив</button>
-          <button id="live-best" disabled title="POST /api/preview {source:'best'} — найкращий геном поточного прогону; навчання не зупиняється">Найкраща особина</button>
+          <button id="live-best" disabled title="POST /api/preview {source:'best'} — рекорд прогону за весь час; навчання не зупиняється">Найкраща особина</button>
+          <button id="live-train" disabled title="Перемикач Headless ↔ Live: POST /api/preview {source:'live_training'} — найкраща особина останнього покоління, оновлюється на кожному колі; вимкнення навчання не зупиняє">Наживо</button>
           <button id="live-stop" disabled>Зупинити</button>
           <select id="live-speed" title="speed — множник темпу відтворення">
             <option value="0.25">×0.25</option>
@@ -382,7 +383,8 @@
           <span class="mono" id="live-t">t 0.0 с</span>
           <span class="mono" id="live-disp">зміщення 0.00</span>
           <span class="mono" id="live-speed-v">|v| 0.00</span>
-          <span class="mono" id="live-fit" title="fitness_running і компоненти §7.1, активні на цьому етапі">F —</span>
+          <span class="mono" id="live-fit" title="fitness_running і компоненти §7.1: S, D, G_aura, C, Pas, E_n">F —</span>
+          <span class="mono" id="live-pred" title="стан FSM хижака (§8.1) і сенсор аури (§4.2)" hidden></span>
           <span class="mono muted" id="live-episode">епізод 1</span>
           <span class="spacer"></span>
           <span class="small muted" id="live-conn">канал: —</span>
@@ -413,6 +415,7 @@
           <span>найкращий F</span><span id="tr-best">—</span>
           <span>середній F</span><span id="tr-avg">—</span>
           <span title="diversity, §6.2">різноманіття</span><span id="tr-div">—</span>
+          <span title="caught_top10 / caught_all, §9.6 — частка епізодів, що закінчились спійманням">спіймано: топ-10 / усі</span><span id="tr-caught">—</span>
           <span title="eval_seconds">оцінка покоління</span><span id="tr-eval">—</span>
           <span title="sim_fps_equivalent — фізичних кроків за секунду, усі процеси разом">кроків / с</span><span id="tr-fps">—</span>
         </div>

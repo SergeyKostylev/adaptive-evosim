@@ -63,10 +63,10 @@ N_AURA: int = 3                   # [aura, aura·sin(bear), aura·cos(bear)]
 N_RAY_CHANNELS: int = 2           # d_obs, d_pred
 N_JOINT_CHANNELS: int = 3         # sin ψ, cos ψ, ω/OMEGA_MAX
 #: Увімкнені групи сенсорів (§4.4, етапність). Пропріоцепція й осцилятор
-#: увімкнені завжди; радар і аура приходять на етапі 4 разом із хижаком.
-#: Від них залежить `N_in`, а отже й розмір геному.
-SENSE_RADAR: bool = False
-SENSE_AURA: bool = False
+#: увімкнені завжди; радар і аура — з етапу 4 разом із хижаком.
+#: Від них залежить `N_in`, а отже й розмір геному: геноми етапу 3 не підходять.
+SENSE_RADAR: bool = True
+SENSE_AURA: bool = True
 
 # --- Мозок (§5) ------------------------------------------------------------
 HIDDEN_1: int = 16
@@ -105,21 +105,27 @@ D_NORM: float = 20.0              # нормалізація чистого зм
 V_MIN_PASSIVITY: float = 0.3      # v_min у компоненті Pas
 N_HITS_NORM: int = 10             # нормалізація кількості контактів
 COLLISION_DEBOUNCE: float = 0.25  # с, на пару шейпів
-#: Компоненти, що входять у F на поточному етапі (§7.1, етапність); решта
-#: звітуються як 0. Етап 4 додає S, G_aura, C.
-FITNESS_COMPONENTS: frozenset[str] = frozenset({"D", "Pas", "E_n"})
 FITNESS_KEYS: tuple[str, ...] = ("S", "D", "G_aura", "C", "Pas", "E_n")
+#: Компоненти, що входять у F на поточному етапі (§7.1, етапність); решта
+#: звітуються як 0. Етап 3 мав лише D, Pas, E_n; з етапу 4 — усі
+FITNESS_COMPONENTS: frozenset[str] = frozenset(FITNESS_KEYS)
+#: Частка спійманих рахується серед стількох найкращих особин покоління (§9.6)
+CAUGHT_TOP_K: int = 10
 
 # --- Хижак (§8.1) ----------------------------------------------------------
 PREDATOR_ENABLED: bool = True
 R_PREDATOR_BODY: float = 0.8
 PREDATOR_BODY_RANGE: tuple[float, float] = (0.2, 3.0)
-V_PATROL: float = 2.0
-V_CHASE: float = 3.5
+#: Переглянуто на етапі 4 (було 2.0 / 3.5): істоти пливуть ≈0.8 од/с, і швидший
+#: у рази хижак робив утечу неможливою (§8.1)
+V_PATROL: float = 0.5
+V_CHASE: float = 0.9
 R_DETECT: float = 8.0
 R_AURA: float = 5.0
 R_CATCH: float = 1.0
 T_GIVEUP: float = 6.0
+#: CHASE → RETURN, коли істота далі за `CHASE_EXIT_FACTOR · R_detect` (§8.1)
+CHASE_EXIT_FACTOR: float = 1.5
 DEFAULT_WAYPOINTS: list[list[float]] = [[-15.0, -10.0], [15.0, -10.0], [15.0, 10.0], [-15.0, 10.0]]
 
 # --- Тестовий контролер-синусоїда (§2.4) -----------------------------------

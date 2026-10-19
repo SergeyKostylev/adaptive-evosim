@@ -13,7 +13,9 @@ Two specification documents govern the work (both in Ukrainian):
 
 Implementation rule stated in the spec: write code strictly per `PROJECT_SPEC.md`, without inventing math or contracts. Any change to the contracts in §2–9 goes into `PROJECT_SPEC.md` **first**, then into the code.
 
-**Stages 1–3 are implemented.** `stage-3` is tagged with the same kind of annotated deviation as `stage-2`: the «best ×2» criterion is unreachable by construction (`D` saturates) — see the open item at the end of `PLAN.md` §Етап 3.
+**Stages 1–3 are implemented; Stage 4 is in progress.** `stage-3` is tagged with the same kind of annotated deviation as `stage-2`: the «best ×2» criterion is unreachable by construction (`D` saturates) — see the open item at the end of `PLAN.md` §Етап 3.
+
+**Stage 4 (predator, sensors, full fitness)** added: the FSM in `core/predator.py` (closed-loop patrol, random start phase from the episode RNG, CHASE with a no-progress timer, RETURN to the nearest waypoint), radar + aura in `core/sensors.py` (`SENSE_RADAR`/`SENSE_AURA` are now `True`), `S`/`G_aura`/`C` in `FitnessAccumulator` (all six components active), catch as a terminal event in `World.step`, collision callbacks in `PhysicsWorld` (`on_obstacle_contact`, `predator_touched`), `caught_top10`/`caught_all` in `GenerationStats` and `metrics.csv`, preview `source: "live_training"` (latest generation's best, from `sim_manager.latest_best`). Frontend: the **Наживо** toggle (Headless ↔ Live), predator state/aura and all six components in the live HUD, rays coloured by hit type, catch share in the training panel. Tests: `test_predator_sensors.py`, extended `test_fitness.py`/`test_determinism.py`.
 
 **Stage 3 (GA, headless)** added: `core/brain.py` (MLP + genome layout), `core/sensors.py` (proprioception + oscillator only), `evolution/genome.py`, `evolution/fitness.py` (`FitnessAccumulator`, `combine`), `evolution/evaluator.py` (spawn-context `Pool`), `evolution/ga.py` (`GeneticAlgorithm`, `run_loop`, CLI), `services/experiment_store.py` (`RunStore`), `services/sim_manager.py` (GA thread + `MetricsHub`), REST `/api/simulation/{start,pause,resume,stop}`, `/api/metrics/generations`, `/api/genome/best`, `WS /ws/metrics`, preview `source: "genome" | "best"`. Frontend: `hud/hud.js` (start/pause/resume/stop, metrics channel, procedural best/avg line) and the **Найкраща особина** button. Tests: `test_genome_ops.py`, `test_fitness.py`, `test_determinism.py`, `test_simulation_api.py`.
 
@@ -37,6 +39,8 @@ EVOSIM_DATA_DIR=<tmpdir> python -m app.evolution.ga --config exp.json [--generat
 ```
 
 Specified but not yet written: `python -m app.core.world --demo` (Stage 2 leftover), `python -m app.evolution.ga --resume <run_id>` (Stage 5).
+
+Stage-3 genomes (and the archived stage-3 `best_genome.json` files) no longer fit: the sensor set grew `n_in` by 27. Previewing them answers 422 by design; their `metrics.csv` stays readable.
 
 Throwaway backend for any manual/UI check (never point one at :8080, see **Data safety**):
 
@@ -120,7 +124,12 @@ When cleaning up after a test, delete only the exact names that test created.
 - Preset and creature names become filenames: `editor_store._safe_path()` (via `item_path`/`preset_path`) is the single gatekeeper (no separators, control chars, `.`/`..`, leading dot, plus a post-resolve containment check). Never build a preset path anywhere else.
 - `N_in = N_rays·2 + 3 + N_joints·3 + 5 + 2`, counted only over sensor groups actually enabled (`config.SENSE_RADAR`/`SENSE_AURA`, both `False` until Stage 4 → `N_in = 3·N_joints + 7`). Flipping a flag changes every genome size, so stage-3 genomes are rejected afterwards (`genome.from_json` → `GenomeMismatch`, preview answers 422). `n_joints` = total segment count (one joint per segment, body↔segment₀ included).
 - Spec §9.1's example response (`"genome_size": 1330` for `n_joints=2, n_in=40`) contradicts the §5 formula, which gives 962. The code follows the **formula** (`config.genome_size`), asserted in `tests/test_api_contracts.py` with the sensor flags monkeypatched on.
-- Fitness terms are staged the same way: `config.FITNESS_COMPONENTS` (Stage 3: `D`, `Pas`, `E_n`) decides what enters `F`; inactive terms are reported as `0`, never as their "true" value — otherwise `S ≡ 1` would silently add `w_surv` to every number.
+- Fitness terms are staged the same way: `config.FITNESS_COMPONENTS` (Stage 3: `D`, `Pas`, `E_n`; Stage 4: all six) decides what enters `F`; inactive terms are reported as `0`, never as their "true" value — otherwise `S ≡ 1` would silently add `w_surv` to every number.
+- The episode RNG (`World.rng`, seeded per `(run, gen, i, e)`) is consumed **only** by `build_predators` — one uniform per enabled predator, in `predators` order, for the start phase on its route (§7.3). Any new draw from it, or a change of that order, changes every result of every run.
+- The predator FSM runs inside `PhysicsWorld.step` before `space.step`, targeting the creature's body centre at the start of the step; catch (`dist < max(r_catch, r_body)` or any shape contact) is checked in `World.step` after it. All distances are centre-to-centre. Predators pass through obstacles (filter) and ignore them in FSM.
+- Radar rays start at the body centre, inside the creature's own shapes: the query filter excludes them by **both** the creature's group and the mask. Channels are interleaved per ray (`[d_obs₀, d_pred₀, …]`), ray 0 points along the body's `+x`. Walls count as obstacles.
+- `C` counts `begin` events per obstacle shape with a 0.25 s debounce (`FitnessAccumulator.hit`) — not per creature shape, so a limb bouncing on a wall or three segments touching it at once is one hit.
+- `metrics.csv` gained `caught_top10, caught_all` **at the end** of the row (Stage 4); `read_generations` returns `None` for them on older runs. New metric columns go at the end too.
 - Episode seeds come from `SeedSequence(run_seed, spawn_key=(gen, i, e))` — identical to the nested `spawn` chain, cheaper. The GA generator is touched only by init, diversity sampling and reproduction, never by evaluation, so the worker count cannot change results (`test_worker_count_does_not_change_results`). Episode `e` starts at `spawns[e % len]`.
 - `metrics.csv` holds only deterministic columns; `eval_seconds`/`sim_fps_equivalent` go to `timing.csv` and `run_id` is the directory name (§9.6). Putting wall-clock time back into `metrics.csv` breaks the bit-identical guarantee.
 - The evaluator pool uses the `spawn` context even on Linux: forking the uvicorn process (event loop + GA thread) can inherit held locks. `sim_manager.stop()` cancels mid-generation (pool terminated, partial generation not written); pause waits for the current generation.

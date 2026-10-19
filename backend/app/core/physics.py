@@ -3,12 +3,18 @@
 Порядок кроку жорстко заданий специфікацією і є частиною відтворюваності:
 гідросили рахуються зі швидкостей **на початку** кроку, застосовуються,
 і лише потім `space.step(DT)`; після кроку — жорсткий кламп `|v| ≤ V_MAX`.
+
+Колізії істоти з перешкодами й хижаками простір лише **повідомляє**
+(`on_obstacle_contact`, `predator_touched`): що з ними робити — справа фітнесу
+й `World` (§7.1, §7.2).
 """
 
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 
+import numpy as np
 import pymunk
 
 from .. import config as C
@@ -22,7 +28,7 @@ from .predator import Predator, build_predators
 class PhysicsWorld:
     """Простір одного епізоду: стіни, перешкоди, хижаки та істоти в рідині."""
 
-    def __init__(self, env: EnvironmentConfig):
+    def __init__(self, env: EnvironmentConfig, rng: np.random.Generator | None = None):
         self.env = env
         self.fluid = env.fluid
         self.space = pymunk.Space()
@@ -34,10 +40,25 @@ class PhysicsWorld:
         self.static_obstacles: list[StaticObstacle]
         self.moving_obstacles: list[MovingObstacle]
         self.static_obstacles, self.moving_obstacles = build_obstacles(self.space, env)
-        self.predators: list[Predator] = build_predators(self.space, env)
+        self.predators: list[Predator] = build_predators(self.space, env, rng)
         self.creatures: list[Creature] = []
         self._layouts: list[_SamplingLayout] = []
         self._clamped: list[list[pymunk.Body]] = []
+
+        #: Викликається з шейпом перешкоди на кожен початок контакту з істотою
+        self.on_obstacle_contact: Callable[[pymunk.Shape], None] | None = None
+        #: Чи торкнулась будь-яка ланка істоти тіла хижака (§7.2)
+        self.predator_touched = False
+        self.space.on_collision(C.CAT_CREATURE, C.CAT_OBSTACLE, begin=self._obstacle_begin)
+        self.space.on_collision(C.CAT_CREATURE, C.CAT_PREDATOR, begin=self._predator_begin)
+
+    # --- колізії -----------------------------------------------------------
+    def _obstacle_begin(self, arbiter: pymunk.Arbiter, space, data) -> None:
+        if self.on_obstacle_contact is not None:
+            self.on_obstacle_contact(arbiter.shapes[1])
+
+    def _predator_begin(self, arbiter: pymunk.Arbiter, space, data) -> None:
+        self.predator_touched = True
 
     # --- склад сцени -------------------------------------------------------
     def add_creature(self, creature: Creature) -> None:
@@ -107,8 +128,9 @@ class PhysicsWorld:
         """Один крок `DT` у строгому порядку §2.3."""
         for obstacle in self.moving_obstacles:
             obstacle.update(t)
+        target = self.creatures[0].body.position if self.creatures else None
         for predator in self.predators:
-            predator.update(t)
+            predator.update(target)
         for creature, layout in zip(self.creatures, self._layouts):
             self.apply_fluid_forces(creature, layout)
         self.space.step(C.DT)

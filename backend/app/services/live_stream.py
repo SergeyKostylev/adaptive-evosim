@@ -76,7 +76,7 @@ class PreviewSession:
     def __init__(
         self,
         hub: LiveHub,
-        make_world: Callable[[], World],
+        make_world: Callable[[int], World],
         *,
         source: str,
         speed: float = 1.0,
@@ -90,7 +90,8 @@ class PreviewSession:
         self.loop = loop
         self.fps = fps
         self.preview_id = f"pv-{secrets.token_hex(3)}"
-        self.world: World = make_world()
+        #: `make_world(k)` — світ для кола `k`; джерело саме вирішує, чим кола різняться
+        self.world: World = make_world(0)
         self.episodes = 0
         self._task: asyncio.Task | None = None
         self._stopped = asyncio.Event()
@@ -143,7 +144,7 @@ class PreviewSession:
                     if not self.loop:
                         break
                     self.episodes += 1
-                    self.world = self.make_world()
+                    self.world = self.make_world(self.episodes)
                     self.hub.publish_scene(self.scene_packet())
 
                 next_frame += frame_dt

@@ -3,7 +3,8 @@
 Етапи 1–2: валідація сутностей, бібліотеки конструктора, живий перегляд
 (`POST /api/preview` + `/ws/live`). Етап 3: керування ГА (`/api/simulation/*`),
 метрики поколінь (`/api/metrics/generations`, `/ws/metrics`), найкращий геном
-і прев'ю геному (`source: "genome" | "best"`).
+і прев'ю геному (`source: "genome" | "best"`). Етап 4: `source: "live_training"`
+— перемикач Headless ↔ Live.
 """
 
 from __future__ import annotations
@@ -256,15 +257,43 @@ async def start_preview(payload: PreviewRequest) -> PreviewResponse:
     `best` — найкращий геном прогону: істота й сцена беруться зі знімка
     прогону, а сам геном перечитується на кожне нове коло епізоду, тож
     прев'ю під час навчання саме підхоплює свіжий рекорд. `live_training` —
-    етап 4.
+    найкраща особина останнього оціненого покоління поточного прогону, теж
+    на кожне коло. Для цих двох кола різняться сідом і точкою появи (§9.4).
     """
-    if payload.source == "live_training":
-        raise StarletteHTTPException(
-            status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail="source='live_training' з'явиться на етапі 4",
-        )
+    def generation_of():                    # покоління для HUD (§9.5)
+        return None
 
-    if payload.source == "best":
+    varied = payload.source in ("best", "live_training")
+
+    if payload.source == "live_training":
+        if payload.run_id and payload.run_id != sim.run_id:
+            raise StarletteHTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"live_training показує лише поточний прогін ({sim.run_id})")
+        if sim.cfg is None or sim.latest_best is None:
+            raise StarletteHTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Поточний прогін ще не оцінив жодного покоління")
+        run_cfg = sim.cfg
+        creature, environment, weights = (
+            run_cfg.creature, run_cfg.environment, run_cfg.fitness_weights)
+        latest = sim.latest_best
+
+        def refresh():
+            nonlocal latest
+            # Прогін міг змінитись: новий старт — новий конфіг, тож геном
+            # чужого прогону сюди не потрапляє
+            if sim.cfg is run_cfg and sim.latest_best is not None:
+                latest = sim.latest_best
+            return latest
+
+        def current_genome():
+            return refresh()[1]
+
+        def generation_of():
+            return latest[0]
+
+    elif payload.source == "best":
         store = _open_run(payload.run_id)
         run_cfg = store.load_config()
         creature, environment, weights = (
@@ -298,12 +327,21 @@ async def start_preview(payload: PreviewRequest) -> PreviewResponse:
         def current_genome():
             return fixed
 
-    def make_world() -> World:
-        return World(
-            creature, environment, genome=current_genome(), seed=payload.seed,
-            episode_seconds=payload.episode_seconds,
-            spawn_index=payload.spawn_index, weights=weights,
+    # Геном із прогону показується в тому горизонті, у якому його оцінювали,
+    # якщо запит не просить іншого (§9.4)
+    episode_seconds = payload.episode_seconds
+    if varied and "episode_seconds" not in payload.model_fields_set:
+        episode_seconds = run_cfg.ga.episode_seconds
+
+    def make_world(k: int) -> World:
+        shift = k if varied else 0
+        world = World(
+            creature, environment, genome=current_genome(), seed=payload.seed + shift,
+            episode_seconds=episode_seconds,
+            spawn_index=payload.spawn_index + shift, weights=weights,
         )
+        world.generation = generation_of()
+        return world
 
     session = live_stream.PreviewSession(
         live_stream.manager.hub, make_world,
@@ -316,7 +354,7 @@ async def start_preview(payload: PreviewRequest) -> PreviewResponse:
         n_joints=creature.n_joints,
         n_in=creature.n_in,
         genome_size=creature.genome_size,
-        episode_seconds=payload.episode_seconds,
+        episode_seconds=episode_seconds,
     )
 
 

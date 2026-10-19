@@ -102,6 +102,8 @@ function showLast() {
   set('#tr-best', Number.isFinite(best) ? best.toFixed(4) : '—');
   set('#tr-avg', last ? last.avg_fitness.toFixed(4) : '—');
   set('#tr-div', last ? last.diversity.toFixed(3) : '—');
+  const pct = (v) => (v == null ? '—' : `${Math.round(v * 100)} %`);
+  set('#tr-caught', last ? `${pct(last.caught_top10)} / ${pct(last.caught_all)}` : '—');
   set('#tr-eval', last ? `${last.eval_seconds.toFixed(1)} с` : '—');
   set('#tr-fps', last ? Math.round(last.sim_fps_equivalent).toLocaleString('uk-UA') : '—');
 }

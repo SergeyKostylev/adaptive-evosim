@@ -62,13 +62,13 @@ class _Spec:
 
 
 def evaluate_individual(spec: _Spec, genome: np.ndarray, gen: int, individual: int
-                        ) -> tuple[list[float], list[dict[str, float]], int]:
-    """Усі епізоди однієї особини → `(F по епізодах, компоненти, кроків)`.
+                        ) -> tuple[list[float], list[dict[str, float]], list[bool], int]:
+    """Усі епізоди однієї особини → `(F по епізодах, компоненти, спіймано, кроків)`.
 
     Епізод `e` стартує з `spawns[e]` (по колу): кілька точок появи — це й є
     різні стартові позиції §7.3.
     """
-    fitnesses, components, steps = [], [], 0
+    fitnesses, components, caught, steps = [], [], [], 0
     for e in range(spec.episodes):
         world = World(
             spec.creature, spec.environment, genome=genome,
@@ -80,8 +80,9 @@ def evaluate_individual(spec: _Spec, genome: np.ndarray, gen: int, individual: i
         f, comps = world.fitness_result()
         fitnesses.append(f)
         components.append(comps)
+        caught.append(world.ended_reason == "caught")
         steps += world.steps
-    return fitnesses, components, steps
+    return fitnesses, components, caught, steps
 
 
 # --- воркер пулу ------------------------------------------------------------
@@ -104,6 +105,7 @@ class EvalResult:
     fitness: np.ndarray                  # [P] — середнє по епізодах (§7.3)
     episode_fitness: np.ndarray          # [P × E]
     components: list[dict[str, float]]   # [P] — середні компоненти
+    caught: np.ndarray                   # [P × E] — епізод закінчився спійманням (§7.2)
     steps: int                           # усього фізичних кроків покоління
     seconds: float
 
@@ -135,11 +137,13 @@ class Evaluator:
         E = self.spec.episodes
         episode_fitness = np.zeros((n, E), dtype=np.float64)
         components: list[dict[str, float] | None] = [None] * n
+        caught = np.zeros((n, E), dtype=bool)
         steps = 0
 
-        def collect(individual, fits, comps, n_steps):
+        def collect(individual, fits, comps, flags, n_steps):
             nonlocal steps
             episode_fitness[individual] = fits
+            caught[individual] = flags
             components[individual] = {k: float(np.mean([c[k] for c in comps]))
                                       for k in C.FITNESS_KEYS}
             steps += n_steps
@@ -163,6 +167,7 @@ class Evaluator:
             fitness=episode_fitness.mean(axis=1),
             episode_fitness=episode_fitness,
             components=components,
+            caught=caught,
             steps=steps,
             seconds=time.perf_counter() - started,
         )

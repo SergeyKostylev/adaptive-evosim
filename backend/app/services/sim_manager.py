@@ -19,6 +19,8 @@ import logging
 import threading
 import time
 
+import numpy as np
+
 from .. import config as C
 from ..evolution.evaluator import EvaluationCancelled, Evaluator
 from ..evolution.ga import GeneticAlgorithm, run_loop
@@ -69,6 +71,10 @@ class SimulationManager:
         self.error: str | None = None
         #: Куди скопійовано завершений прогін (§11); `None` — не завершений
         self.archived: str | None = None
+        #: Знімок конфігу поточного прогону — звідси `live_training` бере істоту й сцену
+        self.cfg: ExperimentConfig | None = None
+        #: `(покоління, геном)` найкращої особини останнього оціненого покоління (§9.4)
+        self.latest_best: tuple[int, np.ndarray] | None = None
         self._lock = threading.Lock()
         self._thread: threading.Thread | None = None
         self._running = threading.Event()     # знятий = пауза
@@ -114,6 +120,8 @@ class SimulationManager:
             self.population = cfg.ga.population
             self.error = None
             self.archived = None
+            self.cfg = cfg
+            self.latest_best = None
             self._stop.clear()
             self._running.set()
             self._started_at = time.monotonic()
@@ -159,8 +167,10 @@ class SimulationManager:
                 return False
         return not self._stop.is_set()
 
-    def _on_generation(self, stats: dict) -> None:
+    def _on_generation(self, stats: dict, ga: GeneticAlgorithm) -> None:
         self.generation = stats["generation"]
+        # Кортеж замінюється цілком — читач з event loop бачить або старий, або новий
+        self.latest_best = (stats["generation"], ga.generation_best)
         self._publish({"type": "generation", "run_id": self.run_id, **stats})
 
     def _run(self, cfg: ExperimentConfig, store: RunStore, workers: int | None) -> None:
@@ -169,7 +179,8 @@ class SimulationManager:
             with Evaluator(cfg, workers) as evaluator:
                 run_loop(ga, evaluator, store, until=cfg.ga.generations,
                          before_generation=self._before_generation,
-                         on_generation=self._on_generation, cancel=self._stop)
+                         on_generation=lambda stats: self._on_generation(stats, ga),
+                         cancel=self._stop)
             # В архів — лише прогін, що пройшов усі заплановані покоління (§11)
             if ga.generation > cfg.ga.generations and not self._stop.is_set():
                 self.archived = str(store.archive().relative_to(C.DATA_DIR))

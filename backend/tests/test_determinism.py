@@ -20,12 +20,18 @@ def data_dir(tmp_path, monkeypatch):
 
 
 def small_cfg(demo_creature, seed: int = 11, name: str = "det") -> ExperimentConfig:
-    # Короткі епізоди: перевіряємо відтворюваність, а не якість плавання
+    # Короткі епізоди: перевіряємо відтворюваність, а не якість плавання.
+    # Хижак біля стартів і перешкода впритул — щоб FSM, випадкова фаза
+    # патруля, спіймання й колізії теж потрапили під побітове порівняння
     return ExperimentConfig.model_validate({
         "name": name, "seed": seed, "creature": demo_creature,
-        "environment": {"spawns": [{"position": [-5, 0], "angle": 0.0},
-                                   {"position": [5, 3], "angle": 1.0}]},
-        "ga": {"population": 8, "generations": 3, "episode_seconds": 1.0},
+        "environment": {
+            "spawns": [{"position": [-5, 0], "angle": 0.0},
+                       {"position": [5, 3], "angle": 1.0}],
+            "predators": [{"waypoints": [[-8, 0], [0, 4], [8, 3]]}],
+            "obstacles": [{"type": "static_circle", "radius": 1.0, "position": [-3.3, 0]}],
+        },
+        "ga": {"population": 8, "generations": 3, "episode_seconds": 2.0},
     })
 
 
@@ -54,6 +60,25 @@ def test_worker_count_does_not_change_results(data_dir, demo_creature):
     serial = run_once(cfg, workers=1)
     pooled = run_once(cfg, workers=2)
     assert (serial.path / "metrics.csv").read_bytes() == (pooled.path / "metrics.csv").read_bytes()
+
+
+def test_caught_fractions_recorded(data_dir, demo_creature):
+    """Частка спійманих — у `metrics.csv` і в REST-рядках (§9.6, DoD етапу 4)."""
+    store = run_once(small_cfg(demo_creature), workers=1)
+    header = (store.path / "metrics.csv").read_text().splitlines()[0].split(",")
+    assert header[-2:] == ["caught_top10", "caught_all"]
+    rows = store.read_generations()
+    assert all(0.0 <= r["caught_top10"] <= 1.0 and 0.0 <= r["caught_all"] <= 1.0 for r in rows)
+    assert any(r["caught_all"] > 0 for r in rows)       # хижак поруч — когось та й спіймано
+
+
+def test_stage3_metrics_without_caught_columns_still_read(data_dir, demo_creature):
+    store = run_once(small_cfg(demo_creature), workers=1)
+    path = store.path / "metrics.csv"
+    lines = [",".join(line.split(",")[:-2]) for line in path.read_text().splitlines()]
+    path.write_text("\n".join(lines) + "\n")
+    rows = store.read_generations()
+    assert rows and rows[0]["caught_top10"] is None and rows[0]["caught_all"] is None
 
 
 def test_different_seed_different_metrics(data_dir, demo_creature):

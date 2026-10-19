@@ -335,8 +335,9 @@ class PreviewRequest(_Model):
             raise ValueError(f"для source='{self.source}' потрібне поле creature")
         if self.source == "genome" and self.genome is None:
             raise ValueError("для source='genome' потрібне поле genome")
-        if self.source in ("best", "live_training") and not self.run_id:
-            raise ValueError(f"для source='{self.source}' потрібен run_id")
+        # `live_training` завжди про поточний прогін менеджера — `run_id` йому не потрібен
+        if self.source == "best" and not self.run_id:
+            raise ValueError("для source='best' потрібен run_id")
         if self.genome is not None and self.creature is not None:
             if self.genome.creature_hash != self.creature.creature_hash:
                 raise ValueError("геном побудований для іншої морфології (creature_hash)")
@@ -509,6 +510,9 @@ class GenerationStats(BaseModel):
     std_fitness: float
     diversity: float
     best_components: dict[str, float]
+    #: Частки спійманих епізодів (етап 4); `None` — прогін старшого етапу
+    caught_top10: float | None = None
+    caught_all: float | None = None
     eval_seconds: float
     sim_fps_equivalent: float
 

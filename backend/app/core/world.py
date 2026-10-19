@@ -1,9 +1,9 @@
 """Фасад одного епізоду: `World(creature_cfg, env_cfg, genome, seed)` (§1.2).
 
 `step()` виконує один крок `DT`: на control-тиках «сенсори → мозок → мотори»,
-далі фізика й накопичення фітнесу. Етап 3 дає мозок (геном), пропріоцепцію з
-осцилятором і компоненти `D`, `Pas`, `E_n`; FSM хижака, радар, аура та решта
-фітнесу — етап 4, тож відповідні частини знімка поки що порожні (див. §9.5).
+далі фізика (FSM хижаків оновлюється всередині, перед `space.step`),
+накопичення фітнесу й перевірка спіймання (§7.2). Генератор епізоду
+(`seed`) задає стартові фази патруля хижаків (§7.3).
 
 Без геному епізод крутиться на тестовій синусоїді (§2.4) — і так само рахує
 фітнес, щоб базову лінію можна було порівняти з навченою істотою.
@@ -54,7 +54,7 @@ class BrainController:
         self.brain = brain
 
     def __call__(self, t: float, world: "World") -> np.ndarray:
-        return self.brain.forward(world.sensors.read(t))
+        return self.brain.forward(world.inputs)
 
 
 class World:
@@ -80,14 +80,16 @@ class World:
         # Один генератор на епізод; епізодні сіди похідні від (run, gen, i, e)
         self.rng = np.random.Generator(np.random.PCG64(self.seed))
 
-        self.physics = PhysicsWorld(env_cfg)
+        self.physics = PhysicsWorld(env_cfg, self.rng)
         position, angle = self._spawn_pose(spawn_index)
         self.start_position = np.array(position, dtype=np.float64)
         self.creature: Creature = build_creature(creature_cfg, position, angle)
         self.physics.add_creature(self.creature)
 
         self.n_joints = self.creature.n_joints
-        self.sensors = Sensors(self.creature)
+        self.predators = self.physics.predators
+        self.sensors = Sensors(self.creature, self.physics.space, self.predators)
+        self.inputs: np.ndarray | None = None
         self.brain: Brain | None = None
         if controller is None and genome is not None:
             self.brain = Brain(genome, self.sensors.n_in, self.n_joints)
@@ -97,12 +99,16 @@ class World:
         self._u_abs = 0.0
         self.fitness = FitnessAccumulator(
             self.episode_seconds, self.n_joints, position, weights)
+        # Контакти з перешкодами — у фітнес із дебаунсом (§7.1, компонент C)
+        self.physics.on_obstacle_contact = lambda shape: self.fitness.hit(shape, self.t)
 
         self.steps = 0
         self.t = 0.0
         self.alive = True
-        #: Причина завершення епізоду: `None`, `"time"` (далі — `"caught"`, етап 4)
+        #: Причина завершення епізоду: `None`, `"time"` або `"caught"` (§7.2)
         self.ended_reason: str | None = None
+        #: Покоління, з якого геном, — лише для HUD прев'ю (§9.5); фізики не стосується
+        self.generation: int | None = None
 
     # --- старт -------------------------------------------------------------
     def _spawn_pose(self, index: int) -> tuple[tuple[float, float], float]:
@@ -119,6 +125,8 @@ class World:
         if not self.alive:
             return
         if self.steps % C.CONTROL_EVERY == 0:
+            # Сенсори читаються й для синусоїди — щоб прев'ю показувало промені
+            self.inputs = self.sensors.read(self.t)
             self.commands = np.clip(
                 np.asarray(self.controller(self.t, self), dtype=np.float64), -1.0, 1.0)
             self.creature.set_motor_rates(self.commands)
@@ -126,9 +134,21 @@ class World:
         self.physics.step(self.t)
         self.steps += 1
         self.t = self.steps * C.DT
-        vx, vy = self.creature.body.velocity
-        self.fitness.step(math.hypot(vx, vy), self._u_abs)
-        if self.t >= self.episode_seconds:
+        body = self.creature.body
+        vx, vy = body.velocity
+        cx, cy = body.position
+        # Аура для G_aura — з R_aura (не з 1.5·R_aura сенсора); заодно спіймання
+        aura, caught = 0.0, self.physics.predator_touched
+        for p in self.predators:
+            px, py = p.body.position
+            dist = math.hypot(px - cx, py - cy)
+            aura = max(aura, 1.0 - dist / p.cfg.r_aura)
+            caught = caught or dist < p.r_catch_effective
+        self.fitness.step(math.hypot(vx, vy), self._u_abs, min(aura, 1.0))
+        if caught:
+            self.alive = False
+            self.ended_reason = "caught"
+        elif self.t >= self.episode_seconds:
             self.alive = False
             self.ended_reason = "time"
 
@@ -188,11 +208,25 @@ class World:
             "episode_seconds": self.episode_seconds,
         }
 
-    def snapshot(self) -> dict:
-        """Кадр `FramePacket` без службових полів транспорту (§9.5).
+    def ray_segments(self) -> list[dict]:
+        """Промені останнього control-тику для кадру §9.5, від поточного центра тіла."""
+        if not C.SENSE_RADAR or self.inputs is None:
+            return []
+        body = self.creature.body
+        cx, cy = body.position
+        phi = body.angle
+        out = []
+        for k, (frac, hit) in enumerate(self.sensors.rays):
+            a = phi + 2 * math.pi * k / C.N_RAYS
+            reach = frac * C.R_RAY
+            out.append({"x1": round(cx, 3), "y1": round(cy, 3),
+                        "x2": round(cx + math.cos(a) * reach, 3),
+                        "y2": round(cy + math.sin(a) * reach, 3),
+                        "hit": hit, "frac": round(frac, 4)})
+        return out
 
-        Промені й аура порожні до етапу 4 — див. примітку в §9.5.
-        """
+    def snapshot(self) -> dict:
+        """Кадр `FramePacket` без службових полів транспорту (§9.5)."""
         body = self.creature.body
         fitness, components = self.fitness_result()
         cfg_body = self.creature_cfg.body
@@ -221,14 +255,17 @@ class World:
                  "r_aura": p.cfg.r_aura, "r_detect": p.cfg.r_detect}
                 for p in self.physics.predators
             ],
-            "sensors": {"rays": [], "aura": 0.0, "bearing": 0.0},
+            "sensors": {"rays": self.ray_segments(),
+                        "aura": round(self.sensors.aura, 4),
+                        "bearing": round(self.sensors.bearing, 4)},
             "obstacles_dynamic": [
                 {"id": m.index, "x": m.body.position.x, "y": m.body.position.y,
                  "angle": m.body.angle}
                 for m in self.physics.moving_obstacles
             ],
             "hud": {
-                "generation": None,
+                "generation": self.generation,
+                "ended": self.ended_reason,
                 "episode_t": round(self.t, 3),
                 "displacement": round(self.displacement, 3),
                 "speed": round(float(body.velocity.length), 3),

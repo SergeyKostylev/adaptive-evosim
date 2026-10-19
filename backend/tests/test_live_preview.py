@@ -49,11 +49,13 @@ def test_preview_reports_network_sizes(client, demo_creature):
     assert body["dt"] == C.DT and body["control_every"] == C.CONTROL_EVERY
 
 
-def test_unimplemented_sources_return_501(client, demo_creature):
-    """`live_training` — етап 4; `genome`/`best` уже є, але без даних — не 200."""
-    res = client.post("/api/preview", json={
-        "source": "live_training", "creature": demo_creature, "run_id": "x"})
-    assert res.status_code == 501
+def test_sources_without_data_are_rejected(client, demo_creature, monkeypatch):
+    """Усі джерела реалізовані (етап 4), але без даних жодне не дає 200."""
+    from app.services.sim_manager import manager as sim
+    monkeypatch.setattr(sim, "cfg", None)
+    monkeypatch.setattr(sim, "latest_best", None)
+    res = client.post("/api/preview", json={"source": "live_training"})
+    assert res.status_code == 409
     res = client.post("/api/preview", json={
         "source": "genome", "creature": demo_creature, "genome": None})
     assert res.status_code == 422
@@ -79,7 +81,9 @@ def test_scene_packet_is_sent_once_and_frames_follow(client, demo_creature):
             {"type": "moving_polygon", "vertices": [[-1, -1], [1, -1], [1, 1], [-1, 1]],
              "p1": [0, -10], "p2": [0, 10], "period": 12.0, "phase": 0.0},
         ],
-        "predators": [{"waypoints": [[-15, -10], [15, -10], [15, 10]]}],
+        # Маршрут далеко від старту в центрі: спіймання перезапустило б епізод
+        # і надіслало б другий `scene` замість кадру
+        "predators": [{"waypoints": [[-15, -16], [15, -16], [15, -13]]}],
     }
     client.post("/api/preview", json={
         "source": "demo", "creature": demo_creature, "environment": env})
@@ -90,7 +94,7 @@ def test_scene_packet_is_sent_once_and_frames_follow(client, demo_creature):
         assert scene["world"] == {"width": C.W_WORLD, "height": C.H_WORLD}
         assert [o["type"] for o in scene["obstacles_static"]] == ["static_circle"]
         assert scene["obstacles_dynamic"][0]["id"] == 1
-        assert scene["waypoints"] == [[[-15, -10], [15, -10], [15, 10]]]
+        assert scene["waypoints"] == [[[-15, -16], [15, -16], [15, -13]]]
         assert scene["creature"]["shape"] == "circle"
 
         frame = ws.receive_json()
@@ -158,7 +162,7 @@ def test_steps_per_frame_follows_speed(demo_creature):
     from app.core.world import World
     from app.schemas import CreatureConfig, EnvironmentConfig
 
-    def make():
+    def make(k):
         return World(CreatureConfig.model_validate(demo_creature), EnvironmentConfig())
 
     hub = live_stream.LiveHub()

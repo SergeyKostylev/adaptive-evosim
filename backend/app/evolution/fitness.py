@@ -2,7 +2,8 @@
 D/Pas/E_n — етап 3, повна формула — етап 4.
 
 Акумулятор нічого не знає про Pymunk: `World` щокроку віддає йому числа
-(швидкість центра, сумарний модуль команд), тож формули тестуються на
+(швидкість центра, сумарний модуль команд, аура найнебезпечнішого хижака), а
+колізії — як ключ перешкоди з часом, тож формули й дебаунс тестуються на
 синтетичних траєкторіях без фізики (§15).
 """
 
@@ -50,12 +51,27 @@ class FitnessAccumulator:
         self.steps = 0
         self.speed_sum = 0.0
         self.energy_sum = 0.0            # Σ_t Σ_j |u_j(t)|·DT
+        self.aura_sum = 0.0              # Σ_t aura(t)·DT
+        self.hits = 0
+        self._last_hit: dict[object, float] = {}
 
-    def step(self, speed: float, u_abs_sum: float) -> None:
-        """Один фізичний крок: модуль швидкості центра і `Σ_j |u_j|`."""
+    def step(self, speed: float, u_abs_sum: float, aura: float = 0.0) -> None:
+        """Один фізичний крок: модуль швидкості центра, `Σ_j |u_j|` і
+        `max_p clamp(1 − dist_p/R_aura_p, 0, 1)`."""
         self.steps += 1
         self.speed_sum += speed
         self.energy_sum += u_abs_sum * C.DT
+        self.aura_sum += aura * C.DT
+
+    def hit(self, obstacle: object, t: float) -> bool:
+        """Початок контакту з перешкодою `obstacle` у момент `t`. Та сама
+        перешкода лічиться не частіше раз на `COLLISION_DEBOUNCE` (§7.1)."""
+        last = self._last_hit.get(obstacle)
+        if last is not None and t - last < C.COLLISION_DEBOUNCE:
+            return False
+        self._last_hit[obstacle] = t
+        self.hits += 1
+        return True
 
     def components(self, t_alive: float, position: tuple[float, float]) -> dict[str, float]:
         """Компоненти §7.1; неактивні на цьому етапі — нулі."""
@@ -65,8 +81,8 @@ class FitnessAccumulator:
         values = {
             "S": min(t_alive / T, 1.0),
             "D": min(disp / C.D_NORM, 1.0),
-            "G_aura": 0.0,
-            "C": 0.0,
+            "G_aura": self.aura_sum / T,
+            "C": min(self.hits / C.N_HITS_NORM, 1.0),
             "Pas": max(0.0, 1.0 - v_mean / C.V_MIN_PASSIVITY),
             "E_n": self.energy_sum / (T * self.n_joints) if self.n_joints else 0.0,
         }

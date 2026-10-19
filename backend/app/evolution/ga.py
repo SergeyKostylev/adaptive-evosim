@@ -43,6 +43,7 @@ class GeneticAlgorithm:
         self.best_generation = 0
         #: Чи оновило останнє покоління рекорд прогону (→ переписати `best_genome.json`)
         self.improved = False
+        self.generation_best: np.ndarray | None = None
 
     # --- оператори (§6.2) ---------------------------------------------------
     def tournament(self, fitness: np.ndarray) -> int:
@@ -73,6 +74,8 @@ class GeneticAlgorithm:
         result = evaluator.evaluate(self.population, gen, cancel)
         fitness = result.fitness
         best = int(np.argmax(fitness))
+        order = np.argsort(-fitness, kind="stable")
+        top = order[:C.CAUGHT_TOP_K]
 
         stats = {
             "generation": gen,
@@ -81,9 +84,14 @@ class GeneticAlgorithm:
             "std_fitness": float(fitness.std()),
             "diversity": G.diversity(self.population, self.rng),
             "best_components": result.components[best],
+            # Частка спійманих епізодів: серед топ-10 за F і по всій популяції (§9.6)
+            "caught_top10": float(result.caught[top].mean()),
+            "caught_all": float(result.caught.mean()),
             "eval_seconds": round(result.seconds, 3),
             "sim_fps_equivalent": round(result.steps / result.seconds) if result.seconds > 0 else 0,
         }
+        #: Найкращий геном щойно оціненого покоління — для `live_training` (§9.4)
+        self.generation_best = self.population[best].copy()
         self.improved = stats["best_fitness"] > self.best_fitness
         if self.improved:
             self.best_fitness = stats["best_fitness"]
@@ -145,7 +153,8 @@ def main(argv: list[str] | None = None) -> int:
         comps = " ".join(f"{k}={v:.3f}" for k, v in s["best_components"].items()
                          if k in C.FITNESS_COMPONENTS)
         print(f"gen {s['generation']:4d}  best {s['best_fitness']:+.4f}  "
-              f"avg {s['avg_fitness']:+.4f}  div {s['diversity']:.3f}  [{comps}]  "
+              f"avg {s['avg_fitness']:+.4f}  div {s['diversity']:.3f}  "
+              f"спійм. топ-10 {s['caught_top10']:.0%} усі {s['caught_all']:.0%}  [{comps}]  "
               f"{s['eval_seconds']:.1f} с, {s['sim_fps_equivalent']:,} кр/с", flush=True)
 
     with Evaluator(cfg, args.workers) as evaluator:

@@ -16,7 +16,7 @@ import {
 } from './api.js';
 import { connect } from './ws.js';
 import { state, clone, buildExperimentConfig, migrateEnvironment } from './state.js';
-import { createPreview, renderSceneThumb } from './render/renderer.js';
+import { createPreview, renderSceneThumb, PREDATOR_STATES } from './render/renderer.js';
 import { themeColors } from './render/shapes.js';
 import { renderCreatureThumb } from './editor/creature_editor.js';
 import { renderPredatorThumb } from './editor/predator_editor.js';
@@ -294,8 +294,10 @@ let liveRequest = null;
 /** Прогін, чию найкращу особину можна показати (з'являється після 1-го покоління). */
 let bestRunId = null;
 
-/** Активні на етапі компоненти — сервер шле всі шість, неактивні нулями (§7.1). */
-const SHOWN_COMPONENTS = ['D', 'Pas', 'E_n'];
+/** Компоненти фітнесу в HUD (§7.1); з етапу 4 активні всі шість. */
+const SHOWN_COMPONENTS = ['S', 'D', 'G_aura', 'C', 'Pas', 'E_n'];
+/** Поточний прогін (з `hud.js`) — для перемикача Headless ↔ Live. */
+let trainingRun = null;
 
 const liveSpeed = () => Number($('#live-speed')?.value ?? 1);
 
@@ -303,6 +305,17 @@ function setLiveUi(active) {
   $('#live-stop').disabled = !active;
   $('#live-hud').hidden = !active;
   $('#hud-state').textContent = active ? 'живий перегляд' : 'зупинено';
+  syncLiveTrain();
+}
+
+/** Кнопка «Наживо» підсвічена, поки йде трансляція навчання; доступна, коли є оцінене покоління. */
+function syncLiveTrain() {
+  const on = liveRequest?.body?.source === 'live_training';
+  const btn = $('#live-train');
+  btn.classList.toggle('active', on);
+  btn.setAttribute('aria-pressed', String(on));
+  btn.disabled = !on && !(trainingRun?.runId && trainingRun.state !== 'STOPPED'
+    && trainingRun.generation >= 1);
 }
 
 function showConnection(state) {
@@ -328,7 +341,19 @@ function openSocket() {
       $('#live-fit').textContent = hud.fitness_running == null ? 'F —'
         : `F ${hud.fitness_running.toFixed(3)} · `
           + SHOWN_COMPONENTS.map((k) => `${k} ${(comps[k] ?? 0).toFixed(2)}`).join(' ');
-      $('#live-episode').textContent = `епізод ${(frame.episode ?? 0) + 1}`;
+      const preds = (frame.predators ?? []).filter((p) => p.enabled !== false);
+      const pred = $('#live-pred');
+      pred.hidden = !preds.length;
+      if (preds.length) {
+        const aura = frame.sensors?.aura ?? 0;
+        pred.textContent = `хижак: ${preds.map((p) => PREDATOR_STATES[p.state] ?? p.state).join(', ')}`
+          + (aura > 0 ? ` · аура ${aura.toFixed(2)}` : '');
+        pred.className = `mono ${preds.some((p) => p.state === 'CHASE') ? 'err' : ''}`;
+      }
+      const ended = hud.ended === 'caught' ? ' · спіймано' : '';
+      const gen = hud.generation != null ? ` · пок. ${hud.generation}` : '';
+      $('#live-episode').textContent = `епізод ${(frame.episode ?? 0) + 1}${gen}${ended}`;
+      $('#live-episode').className = `mono ${ended ? 'err' : 'muted'}`;
     },
     onState: showConnection,
   });
@@ -392,6 +417,21 @@ async function startBestPreview() {
 }
 
 /**
+ * Перемикач Headless ↔ Live (§10.2): трансляція найкращої особини останнього
+ * покоління. Вимкнення лише гасить прев'ю — навчання триває.
+ */
+async function toggleLiveTraining() {
+  if (liveRequest?.body?.source === 'live_training') {
+    await stopLivePreview();
+    return null;
+  }
+  const res = await startLive({ source: 'live_training' },
+    { origin: 'наживо', label: `прогін ${trainingRun?.runId ?? ''} · найкраща особина останнього покоління` });
+  syncLiveTrain();
+  return res;
+}
+
+/**
  * Конфіг для `POST /api/simulation/start` або причина, чому стартувати не можна.
  * Як і для прев'ю, беруться лише **збережені** сутності — чернетка редактора
  * в прогін не потрапляє (§11).
@@ -442,6 +482,7 @@ export async function initSimulationPicker() {
     await startDemoPreview(config.creature, config.environment, { origin: 'збережене' });
   });
   $('#live-best').addEventListener('click', () => startBestPreview());
+  $('#live-train').addEventListener('click', () => toggleLiveTraining());
   // Темп змінюється на сервері (пауза між кадрами), тож прев'ю перезапускається
   $('#live-speed').addEventListener('change', () => {
     if (liveRequest) {
@@ -479,8 +520,10 @@ export async function initSimulationPicker() {
     theme: colors,
     getRun: runForStart,
     onChange: (run) => {
+      trainingRun = run;
       bestRunId = run.runId && run.rows.length ? run.runId : null;
       $('#live-best').disabled = !bestRunId;
+      syncLiveTrain();
     },
   });
 }

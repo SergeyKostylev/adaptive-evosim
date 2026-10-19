@@ -19,7 +19,7 @@ export const DEFAULTS = {
   predator: {
     enabled: true,
     r_body: 0.8,
-    v_patrol: 2.0, v_chase: 3.5, r_detect: 8.0, r_aura: 5.0, r_catch: 1.0,
+    v_patrol: 0.5, v_chase: 0.9, r_detect: 8.0, r_aura: 5.0, r_catch: 1.0,
   },
   segment: {
     length: 1.2, width: 0.18, density: 1.0,

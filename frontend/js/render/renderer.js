@@ -11,6 +11,9 @@ import {
   worldVerts, drawCreatureGhost, creatureReach, drawEyes,
 } from './shapes.js';
 
+/** Стани FSM хижака (§8.1) українською; ключі контракту — у підказках. */
+export const PREDATOR_STATES = { PATROL: 'патруль', CHASE: 'погоня', RETURN: 'повернення' };
+
 /** Статичний вміст сцени: межі світу, перешкоди, маршрути, точки появи. */
 export function drawExperiment(ctx, view, config, colors, opts = {}) {
   const labels = [];
@@ -144,17 +147,18 @@ function drawLiveFrame(ctx, view, scene, frame, colors) {
     circle(ctx, p.x, p.y, p.r_aura, { stroke: hexAlpha(colors.danger, 0.6), lw });
     circle(ctx, p.x, p.y, p.r_body, { fill: hexAlpha(colors.danger, 0.8), stroke: colors.danger, lw });
     labels.push({
-      x: p.x, y: p.y + p.r_body + 0.5, text: p.state, size: 11,
+      x: p.x, y: p.y + p.r_body + 0.5, text: PREDATOR_STATES[p.state] ?? p.state, size: 11,
       color: hexAlpha(colors.danger, 0.95), bg: hexAlpha(colors.bg, 0.7),
     });
   }
 
-  // Промені радара (етап 4; до того список порожній)
+  // Промені радара за типом влучання (§10.2): промах ледь видно, перешкода — `warn`, хижак — `danger`
   for (const ray of frame.sensors?.rays ?? []) {
-    line(ctx, ray.x1, ray.y1, ray.x2, ray.y2, {
-      stroke: hexAlpha(ray.hit === 'predator' ? colors.danger : colors.accent2, 0.55),
-      lw: view.px(1),
-    });
+    const stroke = ray.hit === 'predator' ? hexAlpha(colors.danger, 0.9)
+      : ray.hit === 'obstacle' ? hexAlpha(colors.warn, 0.75)
+        : hexAlpha(colors.accent2, 0.22);
+    line(ctx, ray.x1, ray.y1, ray.x2, ray.y2, { stroke, lw: view.px(ray.hit ? 1.5 : 1) });
+    if (ray.hit) circle(ctx, ray.x2, ray.y2, view.px(2.5), { fill: stroke });
   }
 
   const creature = frame.creature;
