@@ -49,7 +49,7 @@ cd backend && EVOSIM_DATA_DIR=<tmpdir> ../.venv/bin/python -m uvicorn app.main:a
     --host 127.0.0.1 --port 8099 --reload --reload-dir app
 ```
 
-There is no frontend build step and no npm in the repo (R8: plain ES modules, Canvas 2D, no frameworks) — editing a file under `frontend/` only needs `docker compose up --build frontend` to reach the container.
+There is no frontend build step and no npm in the repo (R8: plain ES modules, Canvas 2D, no frameworks) — editing a file under `frontend/` only needs `docker compose up --build -d --no-deps frontend` to reach the container. **`--no-deps` is mandatory:** without it `depends_on` makes compose recreate the backend too, which kills any training run in progress (a `move-only` run died at generation 127/200 this way on 2026-10-25).
 
 **The frontend has no in-repo tests.** It was verified with jsdom scripts kept in the session scratchpad (boot `index.html`, stub `getContext`/`ResizeObserver`, point `fetch` at :8099, drive real clicks). They are disposable; if a change needs frontend verification, write a fresh one the same way rather than assuming coverage exists. Two cheap static checks catch most wiring breakage:
 

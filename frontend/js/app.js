@@ -10,6 +10,7 @@ import {
 } from './state.js';
 import { initEditor } from './editor/editor.js';
 import { initSimulationPicker, refreshExperimentPreview } from './simulation.js';
+import { initCollapsibles } from './collapsible.js';
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -146,6 +147,7 @@ async function restoreSavedState() {
 async function bootstrap() {
   const fromUrl = readUrl();
   initTabs();
+  initCollapsibles();
   await restoreSavedState();
   const api = initEditor(state);
 

@@ -322,7 +322,7 @@
         <div class="btns"><button id="sim-refresh">Оновити списки</button></div>
         <p class="small mono" id="sim-summary" style="margin:8px 0 0">—</p>
       </div>
-      <div class="group">
+      <div class="group" data-collapsible="ga">
         <h3>Параметри генетичного алгоритму</h3>
         <div class="row"><label title="name">Назва прогону</label><input type="text" id="ga-name" value="exp-baseline-01"></div>
         <div class="row"><label title="seed — відтворюваність прогону">Сід</label><input type="number" id="ga-seed" value="42" min="0" step="1"></div>
@@ -336,7 +336,7 @@
         <div class="row"><label title="ga.episodes_per_individual">Епізодів на особину</label><input type="number" id="ga-episodes_per_individual" value="2" min="1" max="10" step="1"></div>
         <div class="row"><label title="ga.episode_seconds">Тривалість епізоду, с</label><input type="number" id="ga-episode_seconds" value="30" min="1" step="1"></div>
       </div>
-      <div class="group">
+      <div class="group" data-collapsible="fitness">
         <h3>Ваги фітнес-функції</h3>
         <div class="row"><label title="fitness_weights.survival — компонент S">Виживання</label><input type="number" id="fw-survival" value="3" min="0" step="0.1"></div>
         <div class="row"><label title="fitness_weights.distance — компонент D">Дистанція</label><input type="number" id="fw-distance" value="1.5" min="0" step="0.1"></div>
@@ -411,6 +411,10 @@
       <div class="group">
         <h3>Навчання</h3>
         <canvas id="fit-chart" class="chart" title="найкращий (м'ятний) і середній (синій) фітнес по поколіннях"></canvas>
+        <div class="legend">
+          <span title="best_fitness — рекорд популяції; не спадає, бо елітизм переносить найкращих без змін"><i class="swatch" style="background:var(--accent)"></i>найкращий фітнес у поколінні</span>
+          <span title="avg_fitness — середнє по всій популяції; росте, коли вдалі гени поширюються"><i class="swatch" style="background:var(--accent-2)"></i>середній фітнес популяції</span>
+        </div>
         <div class="kv" style="margin-top:6px">
           <span>найкращий F</span><span id="tr-best">—</span>
           <span>середній F</span><span id="tr-avg">—</span>
