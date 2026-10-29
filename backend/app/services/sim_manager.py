@@ -67,6 +67,7 @@ class SimulationManager:
         self.state = "STOPPED"
         self.run_id: str | None = None
         self.generation = 0
+        self.generations_total = 0
         self.population = 0
         self.error: str | None = None
         #: Куди скопійовано завершений прогін (§11); `None` — не завершений
@@ -95,7 +96,8 @@ class SimulationManager:
 
     def state_packet(self) -> dict:
         return {"type": "state", "state": self.state, "run_id": self.run_id,
-                "generation": self.generation, "error": self.error,
+                "generation": self.generation,
+                "generations_total": self.generations_total, "error": self.error,
                 "archived": self.archived}
 
     def _publish(self, packet: dict) -> None:
@@ -117,6 +119,7 @@ class SimulationManager:
             store = RunStore.create(cfg)
             self.run_id = store.run_id
             self.generation = 0
+            self.generations_total = cfg.ga.generations
             self.population = cfg.ga.population
             self.error = None
             self.archived = None

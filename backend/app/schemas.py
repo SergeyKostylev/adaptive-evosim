@@ -261,6 +261,8 @@ class GAConfig(_Model):
     mutation_sigma: float = Field(default=C.GA_MUTATION_SIGMA, gt=0)
     episodes_per_individual: int = Field(default=C.GA_EPISODES_PER_INDIVIDUAL, ge=1, le=10)
     episode_seconds: float = Field(default=C.GA_EPISODE_SECONDS, gt=0)
+    #: Усі особини покоління проходять ті самі сценарії (сід без `individual`, §6.2)
+    shared_scenarios: bool = C.GA_SHARED_SCENARIOS
 
     @model_validator(mode="after")
     def _elitism_fits(self) -> "GAConfig":
@@ -487,6 +489,8 @@ class SimulationStatus(BaseModel):
     state: Literal["RUNNING", "PAUSED", "STOPPED"]
     run_id: str | None = None
     generation: int = 0
+    #: Заплановано поколінь у прогоні (`ga.generations`) — для прогрес-бару
+    generations_total: int = 0
     population: int = 0
     elapsed_s: float = 0.0
     mode: Literal["headless", "live"] = "headless"

@@ -57,6 +57,7 @@ def test_full_run_publishes_generations_and_stores_results(client, demo_creature
                 generations.append(packet)
             else:
                 states.append(packet["state"])
+                assert packet["generations_total"] == 3
                 if packet["state"] == "STOPPED":
                     assert packet["archived"] == f"{C.ARCHIVE_SUBDIR}/{run_id}"
                     break
@@ -68,6 +69,7 @@ def test_full_run_publishes_generations_and_stores_results(client, demo_creature
 
     status = client.get("/api/simulation/status").json()
     assert status["state"] == "STOPPED" and status["generation"] == 3
+    assert status["generations_total"] == 3
     assert status["run_id"] == run_id and status["population"] == 6
 
     rows = client.get("/api/metrics/generations", params={"run_id": run_id}).json()["rows"]

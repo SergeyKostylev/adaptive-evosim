@@ -159,6 +159,14 @@ pre.out {
 .placeholder h2 { color: var(--text); font-weight: 600; }
 .kv { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font: 12px var(--mono); }
 .kv > span:nth-child(odd) { color: var(--muted); }
+
+/* Прогрес прогону: поколінь пройдено із запланованих */
+.progress { margin-top: 8px; }
+.progress .bar { height: 6px; background: var(--bg); border: 1px solid var(--border); border-radius: 3px; overflow: hidden; }
+.progress .bar > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .3s; }
+.progress.paused .bar > i { background: var(--warn); }
+.progress.stopped .bar > i { background: var(--muted); }
+.progress .small { margin-top: 3px; font-family: var(--mono); }
 hr { border: 0; border-top: 1px solid var(--border); margin: 8px 0; }
 
 #validate-msg { white-space: pre-wrap; }

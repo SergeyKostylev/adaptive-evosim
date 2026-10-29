@@ -21,7 +21,7 @@ const $ = (s) => document.querySelector(s);
 const STATE_LABELS = { RUNNING: 'виконується', PAUSED: 'пауза', STOPPED: 'зупинено' };
 
 /** Поточний прогін: стан сервера + історія поколінь для лінії. */
-const run = { state: 'STOPPED', runId: null, generation: 0, rows: [] };
+const run = { state: 'STOPPED', runId: null, generation: 0, total: 0, rows: [] };
 let colors = null;
 let onRunChange = null;
 
@@ -57,6 +57,7 @@ async function applyState(packet) {
   const changedRun = packet.run_id && packet.run_id !== run.runId;
   run.state = packet.state ?? run.state;
   if (packet.generation != null) run.generation = packet.generation;
+  if (packet.generations_total != null) run.total = packet.generations_total;
   if (changedRun) {
     run.runId = packet.run_id;
     run.rows = [];
@@ -66,6 +67,7 @@ async function applyState(packet) {
   $('#st-state').textContent = STATE_LABELS[run.state] ?? run.state;
   $('#st-run').textContent = run.runId ?? '—';
   $('#st-gen').textContent = run.generation;
+  showProgress();
   if (packet.error) message(`прогін зупинився з помилкою: ${packet.error}`, 'err');
   else if (run.state === 'RUNNING') message('навчання триває; пауза настає між поколіннями');
   else if (run.state === 'PAUSED') message('пауза: поточне покоління дооцінене й записане');
@@ -83,6 +85,7 @@ async function loadHistory() {
   } catch { /* прогін міг ще не записати жодного покоління */ }
   drawChart();
   showLast();
+  showProgress();
 }
 
 function onGeneration(stats) {
@@ -90,9 +93,30 @@ function onGeneration(stats) {
   if (!run.rows.length || run.rows.at(-1).generation < stats.generation) run.rows.push(stats);
   run.generation = stats.generation;
   $('#st-gen').textContent = run.generation;
+  showProgress();
   drawChart();
   showLast();
   onRunChange?.({ ...run });
+}
+
+/** Смужка «пройдено / заплановано» і оцінка часу, що лишився. */
+function showProgress() {
+  const box = $('#st-progress');
+  box.hidden = !run.runId || !run.total;
+  if (box.hidden) return;
+  const done = Math.min(run.generation, run.total);
+  const pct = Math.floor((done / run.total) * 100);
+  $('#st-progress-bar').style.width = `${pct}%`;
+  box.classList.toggle('paused', run.state === 'PAUSED');
+  box.classList.toggle('stopped', run.state === 'STOPPED');
+
+  let eta = '';
+  const recent = run.rows.slice(-10).map((r) => r.eval_seconds).filter(Number.isFinite);
+  if (run.state !== 'STOPPED' && recent.length && done < run.total) {
+    const sec = (recent.reduce((a, b) => a + b, 0) / recent.length) * (run.total - done);
+    eta = sec < 90 ? ` · лишилось ~${Math.round(sec)} с` : ` · лишилось ~${Math.round(sec / 60)} хв`;
+  }
+  $('#st-progress-text').textContent = `${done} / ${run.total} · ${pct} %${eta}`;
 }
 
 function showLast() {

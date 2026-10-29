@@ -26,13 +26,17 @@ class EvaluationCancelled(Exception):
     """Покоління перервано зупинкою прогону; його результати не пишуться."""
 
 
-def episode_seed(run_seed: int, gen: int, individual: int, episode: int) -> int:
+def episode_seed(run_seed: int, gen: int, individual: int, episode: int,
+                 shared: bool = False) -> int:
     """`SeedSequence(run_seed).spawn(…)[gen].spawn(…)[i].spawn(…)[e]` (§6.2).
 
     `spawn_key` — рівно той ключ, який дав би ланцюжок `spawn`, тож
-    обходимося без побудови проміжних дерев на кожну особину.
+    обходимося без побудови проміжних дерев на кожну особину. `shared` —
+    спільні сценарії: ключ `(gen, e)` без особини, тож усе покоління
+    проходить ті самі фази патруля.
     """
-    seq = np.random.SeedSequence(run_seed, spawn_key=(gen, individual, episode))
+    key = (gen, episode) if shared else (gen, individual, episode)
+    seq = np.random.SeedSequence(run_seed, spawn_key=key)
     return int(seq.generate_state(1, dtype=np.uint64)[0])
 
 
@@ -54,11 +58,13 @@ class _Spec:
     episodes: int
     episode_seconds: float
     run_seed: int
+    shared_scenarios: bool = False
 
     @classmethod
     def from_experiment(cls, cfg: ExperimentConfig) -> "_Spec":
         return cls(cfg.creature, cfg.environment, cfg.fitness_weights,
-                   cfg.ga.episodes_per_individual, cfg.ga.episode_seconds, cfg.seed)
+                   cfg.ga.episodes_per_individual, cfg.ga.episode_seconds, cfg.seed,
+                   cfg.ga.shared_scenarios)
 
 
 def evaluate_individual(spec: _Spec, genome: np.ndarray, gen: int, individual: int
@@ -72,7 +78,7 @@ def evaluate_individual(spec: _Spec, genome: np.ndarray, gen: int, individual: i
     for e in range(spec.episodes):
         world = World(
             spec.creature, spec.environment, genome=genome,
-            seed=episode_seed(spec.run_seed, gen, individual, e),
+            seed=episode_seed(spec.run_seed, gen, individual, e, spec.shared_scenarios),
             episode_seconds=spec.episode_seconds, spawn_index=e,
             weights=spec.weights,
         )

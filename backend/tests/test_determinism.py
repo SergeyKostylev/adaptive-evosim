@@ -95,6 +95,38 @@ def test_episode_seeds_follow_spawn_tree():
     assert len(seeds) == 30
 
 
+def test_shared_scenario_seeds_ignore_individual():
+    """Спільні сценарії (§6.2): сід залежить від покоління й епізоду, не від особини."""
+    assert episode_seed(42, 3, 0, 1, shared=True) == episode_seed(42, 3, 7, 1, shared=True)
+    seeds = {episode_seed(42, g, 0, e, shared=True) for g in range(3) for e in range(4)}
+    assert len(seeds) == 12
+    # без прапорця — рівно колишні сіди, тож старші прогони відтворюються
+    assert episode_seed(42, 3, 5, 1, shared=False) == episode_seed(42, 3, 5, 1)
+
+
+def test_shared_scenarios_give_equal_genomes_equal_fitness(demo_creature):
+    """Однакові геноми в одному поколінні: спільні сценарії → однаковий F,
+    власні сіди → різні фази хижака і, як правило, різний F."""
+    cfg = small_cfg(demo_creature)
+    clone = GeneticAlgorithm(cfg).population[0]
+    population = np.stack([clone] * 4)
+    shared = cfg.model_copy(update={"ga": cfg.ga.model_copy(update={"shared_scenarios": True})})
+    with Evaluator(shared, 1) as evaluator:
+        same = evaluator.evaluate(population, gen=1).episode_fitness
+    assert (same == same[0]).all()
+    with Evaluator(cfg, 1) as evaluator:
+        own = evaluator.evaluate(population, gen=1).episode_fitness
+    assert not (own == own[0]).all()
+
+
+def test_shared_scenarios_run_is_reproducible(data_dir, demo_creature):
+    cfg = small_cfg(demo_creature)
+    cfg = cfg.model_copy(update={"ga": cfg.ga.model_copy(update={"shared_scenarios": True})})
+    serial = run_once(cfg, workers=1)
+    pooled = run_once(cfg, workers=2)
+    assert (serial.path / "metrics.csv").read_bytes() == (pooled.path / "metrics.csv").read_bytes()
+
+
 def test_timing_kept_out_of_metrics(data_dir, demo_creature):
     """Час оцінки залежить від машини — він у `timing.csv`, а не в `metrics.csv` (§9.6)."""
     store = run_once(small_cfg(demo_creature), workers=1)

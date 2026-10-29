@@ -207,6 +207,7 @@ async def simulation_status() -> SimulationStatus:
         state=sim.state,
         run_id=sim.run_id,
         generation=sim.generation,
+        generations_total=sim.generations_total,
         population=sim.population,
         elapsed_s=sim.elapsed_s,
         mode="live" if live_stream.manager.active else "headless",

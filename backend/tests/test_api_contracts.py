@@ -15,7 +15,8 @@ def test_status_stub(client):
     assert r.status_code == 200
     body = r.json()
     assert body["state"] == "STOPPED"
-    assert set(body) == {"state", "run_id", "generation", "population", "elapsed_s", "mode"}
+    assert set(body) == {"state", "run_id", "generation", "generations_total", "population",
+                         "elapsed_s", "mode"}
     assert body["mode"] == "headless"
 
 

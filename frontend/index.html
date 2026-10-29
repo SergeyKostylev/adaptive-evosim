@@ -335,6 +335,10 @@
         <div class="row"><label title="ga.mutation_sigma">Сигма мутації</label><input type="number" id="ga-mutation_sigma" value="0.15" min="0.001" step="0.01"></div>
         <div class="row"><label title="ga.episodes_per_individual">Епізодів на особину</label><input type="number" id="ga-episodes_per_individual" value="2" min="1" max="10" step="1"></div>
         <div class="row"><label title="ga.episode_seconds">Тривалість епізоду, с</label><input type="number" id="ga-episode_seconds" value="30" min="1" step="1"></div>
+        <div class="row">
+          <label for="ga-shared_scenarios" title="ga.shared_scenarios — усі особини покоління проходять ті самі сценарії (фази хижаків), §6.2; без цього відбір нагороджує удачу">Спільні сценарії в поколінні</label>
+          <input type="checkbox" id="ga-shared_scenarios" checked style="flex:none">
+        </div>
       </div>
       <div class="group" data-collapsible="fitness">
         <h3>Ваги фітнес-функції</h3>
@@ -406,6 +410,10 @@
           <span>прогін</span><span id="st-run">—</span>
           <span>покоління</span><span id="st-gen">—</span>
           <span>режим</span><span id="st-mode">—</span>
+        </div>
+        <div class="progress" id="st-progress" hidden title="generation / ga.generations; час — за середнім eval_seconds останніх 10 поколінь">
+          <div class="bar"><i id="st-progress-bar"></i></div>
+          <div class="small muted" id="st-progress-text"></div>
         </div>
       </div>
       <div class="group">

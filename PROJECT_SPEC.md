@@ -360,6 +360,7 @@ population = new_pop
 ```
 
 - **Відтворюваність:** один `np.random.Generator(PCG64(seed))` на прогін; сіди епізодів: `seed_episode = hash(run_seed, gen, individual_idx, episode_idx)` через `np.random.SeedSequence.spawn`.
+- **Спільні сценарії** (`ga.shared_scenarios = true`): сід епізоду не залежить від особини — `seed_episode = hash(run_seed, gen, episode_idx)` (`SeedSequence(run_seed, spawn_key=(gen, e))`), тож усі особини покоління проходять ті самі `E` сценаріїв (фази патруля), а між поколіннями сценарії змінюються. Це прибирає з відбору удачу: без цього особина, якій випали далекі хижаки, обганяє ту, що вміє ухилятися (прогони `dod4-spokes*`: рекордний геном на нових сідах гине в 38–39 з 40 епізодів). За замовчуванням у схемі `false` — так конфіги старших прогонів, де поля немає, відтворюються побітово (R7); UI для нових прогонів вмикає його.
 - **Паралелізм:** `evaluator` ділить популяцію на чанки по процесах (`N_WORKERS = os.cpu_count() − 1`); кожен воркер будує власний `World` на епізод. Результат — масив `[P × E]` фітнесів + покомпонентний розклад (для аналітики).
 
 ---
@@ -399,7 +400,7 @@ F = w_surv·S + w_dist·D − w_dang·G_aura − w_coll·C − w_pass·Pas − w
 Фітнес особини = середнє по `E = 2` епізодах з різними стартовими позиціями/фазами патруля хижака. Це карає оверфіт під конкретну траєкторію хижака.
 
 - Стартова позиція епізоду `e` — `spawns[e mod len(spawns)]` (§9.2).
-- Фаза патруля — з генератора епізоду (сід `(run_seed, gen, i, e)`, §6.2): кожен хижак стартує в рівномірно випадковій точці свого замкненого маршруту, `s ~ U[0, L)` уздовж периметра, у порядку `predators`. Тож і всередині покоління, і між епізодами хижаки приходять у різний час.
+- Фаза патруля — з генератора епізоду (сід `(run_seed, gen, i, e)`, або `(run_seed, gen, e)` зі спільними сценаріями, §6.2): кожен хижак стартує в рівномірно випадковій точці свого замкненого маршруту, `s ~ U[0, L)` уздовж периметра, у порядку `predators`. Тож і всередині покоління, і між епізодами хижаки приходять у різний час.
 - Частка спійманих — окрема метрика покоління (§9.6), бо `S` змішує «спіймали рано» і «спіймали пізно».
 
 ---
@@ -540,7 +541,8 @@ live-перегляду. Еволюціонує завжди морфологі�
     "population": 100, "generations": 200, "elitism": 2,
     "tournament_k": 3, "p_crossover": 0.9, "crossover": "uniform",
     "p_mutation": 0.05, "mutation_sigma": 0.15,
-    "episodes_per_individual": 2, "episode_seconds": 30.0
+    "episodes_per_individual": 2, "episode_seconds": 30.0,
+    "shared_scenarios": false
   },
   "fitness_weights": {
     "survival": 3.0, "distance": 1.5, "danger": 2.0,
@@ -559,7 +561,7 @@ live-перегляду. Еволюціонує завжди морфологі�
 | `POST` | `/api/simulation/pause` | — → `{state:"PAUSED"}` (пауза між поколіннями) |
 | `POST` | `/api/simulation/resume` | — → `{state:"RUNNING"}` |
 | `POST` | `/api/simulation/stop` | — → `{state:"STOPPED", run_id}` (фіналізує збереження) |
-| `GET` | `/api/simulation/status` | → `{state, run_id?, generation, population, elapsed_s, mode:"headless"\|"live"}` |
+| `GET` | `/api/simulation/status` | → `{state, run_id?, generation, generations_total, population, elapsed_s, mode:"headless"\|"live"}`; `generations_total` — `ga.generations` поточного (або останнього) прогону, `0` до першого старту |
 | `GET` | `/api/metrics/generations?run_id=&from_gen=0` | → `{rows:[GenerationStats]}` (розділ 9.6) |
 | `POST` | `/api/preview` | `PreviewRequest` → `PreviewResponse`; стартує live-епізод, кадри йдуть у `/ws/live`; `409`, якщо прев'ю вже активне |
 | `DELETE` | `/api/preview` | зупиняє прев'ю, headless продовжується |
@@ -719,7 +721,7 @@ live-перегляду. Еволюціонує завжди морфологі�
 
 Рядок `metrics.csv` — той самий об'єкт **без** полів, що залежать від годинника чи імені запуску: `generation, best_fitness, avg_fitness, std_fitness, diversity, S, D, G_aura, C, Pas, E_n, caught_top10, caught_all` (компоненти найкращої особини розгорнуті в колонки). Тільки так однаковий `seed` дає побітово однаковий файл (R7). `eval_seconds` і `sim_fps_equivalent` пишуться поруч у `timing.csv` (`generation, eval_seconds, sim_fps_equivalent`), `run_id` — це назва каталогу. `GET /api/metrics/generations` склеює обидва файли назад у `GenerationStats`.
 
-На підключення `/ws/metrics` сервер шле пакет `{"type": "state", "state", "run_id", "generation", "error", "archived"}` і повторює його при кожній зміні стану (RUNNING/PAUSED/STOPPED); історію поколінь клієнт бере з REST.
+На підключення `/ws/metrics` сервер шле пакет `{"type": "state", "state", "run_id", "generation", "generations_total", "error", "archived"}` і повторює його при кожній зміні стану (RUNNING/PAUSED/STOPPED); історію поколінь клієнт бере з REST.
 
 ---
 
