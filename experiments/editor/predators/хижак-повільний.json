@@ -1,0 +1,12 @@
+{
+  "predator": {
+    "enabled": true,
+    "r_body": 0.8,
+    "v_patrol": 0.5,
+    "v_chase": 0.9,
+    "r_detect": 8.0,
+    "r_aura": 5.0,
+    "r_catch": 1.0
+  },
+  "saved_at": "2026-10-29T11:22:04+00:00"
+}

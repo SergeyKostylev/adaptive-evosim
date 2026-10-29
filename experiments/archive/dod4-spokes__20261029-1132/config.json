@@ -1,0 +1,233 @@
+{
+  "name": "dod4-spokes",
+  "seed": 42,
+  "creature": {
+    "name": "swimmer-v1",
+    "body": {
+      "shape": "circle",
+      "radius": 0.8,
+      "vertices": null,
+      "density": 1.0
+    },
+    "limbs": [
+      {
+        "attach_angle": 1.583,
+        "rest_angle": 0.0,
+        "segments": [
+          {
+            "length": 0.39,
+            "width": 0.18,
+            "density": 1.0,
+            "joint": {
+              "angle_min": -1.2,
+              "angle_max": 1.2,
+              "motor_torque": 120.0
+            }
+          },
+          {
+            "length": 0.3,
+            "width": 0.126,
+            "density": 1.0,
+            "joint": {
+              "angle_min": -1.2,
+              "angle_max": 1.2,
+              "motor_torque": 120.0
+            }
+          }
+        ]
+      },
+      {
+        "attach_angle": -1.5596,
+        "rest_angle": 0.0,
+        "segments": [
+          {
+            "length": 0.39,
+            "width": 0.18,
+            "density": 1.0,
+            "joint": {
+              "angle_min": -1.2,
+              "angle_max": 1.2,
+              "motor_torque": 120.0
+            }
+          },
+          {
+            "length": 0.3,
+            "width": 0.126,
+            "density": 1.0,
+            "joint": {
+              "angle_min": -1.2,
+              "angle_max": 1.2,
+              "motor_torque": 120.0
+            }
+          }
+        ]
+      },
+      {
+        "attach_angle": -3.1416,
+        "rest_angle": 0.0007,
+        "segments": [
+          {
+            "length": 0.7,
+            "width": 0.18,
+            "density": 1.0,
+            "joint": {
+              "angle_min": -1.2,
+              "angle_max": 1.2,
+              "motor_torque": 120.0
+            }
+          },
+          {
+            "length": 0.525,
+            "width": 0.126,
+            "density": 1.0,
+            "joint": {
+              "angle_min": -1.2,
+              "angle_max": 1.2,
+              "motor_torque": 120.0
+            }
+          },
+          {
+            "length": 0.394,
+            "width": 0.088,
+            "density": 1.0,
+            "joint": {
+              "angle_min": -1.2,
+              "angle_max": 1.2,
+              "motor_torque": 120.0
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "environment": {
+    "world": {
+      "width": 60.0,
+      "height": 40.0
+    },
+    "fluid": {
+      "rho": 1.0,
+      "c_d_perp": 2.0,
+      "c_d_par": 0.1,
+      "c_l": 0.5,
+      "linear_damping": 0.98
+    },
+    "spawns": [
+      {
+        "position": [
+          0.0,
+          0.0
+        ],
+        "angle": 0.0,
+        "label": null
+      },
+      {
+        "position": [
+          0.0,
+          0.0
+        ],
+        "angle": 1.5708,
+        "label": null
+      },
+      {
+        "position": [
+          0.0,
+          0.0
+        ],
+        "angle": 3.1416,
+        "label": null
+      },
+      {
+        "position": [
+          0.0,
+          0.0
+        ],
+        "angle": 4.7124,
+        "label": null
+      }
+    ],
+    "predators": [
+      {
+        "enabled": true,
+        "r_body": 0.8,
+        "v_patrol": 0.5,
+        "v_chase": 0.9,
+        "r_detect": 8.0,
+        "r_aura": 5.0,
+        "r_catch": 1.0,
+        "preset": "хижак-повільний",
+        "waypoints": [
+          [
+            0.0,
+            4.0
+          ],
+          [
+            0.0,
+            19.0
+          ]
+        ]
+      },
+      {
+        "enabled": true,
+        "r_body": 0.8,
+        "v_patrol": 0.5,
+        "v_chase": 0.9,
+        "r_detect": 8.0,
+        "r_aura": 5.0,
+        "r_catch": 1.0,
+        "preset": "хижак-повільний",
+        "waypoints": [
+          [
+            -3.464,
+            -2.0
+          ],
+          [
+            -16.454,
+            -9.5
+          ]
+        ]
+      },
+      {
+        "enabled": true,
+        "r_body": 0.8,
+        "v_patrol": 0.5,
+        "v_chase": 0.9,
+        "r_detect": 8.0,
+        "r_aura": 5.0,
+        "r_catch": 1.0,
+        "preset": "хижак-повільний",
+        "waypoints": [
+          [
+            3.464,
+            -2.0
+          ],
+          [
+            16.454,
+            -9.5
+          ]
+        ]
+      }
+    ],
+    "obstacles": []
+  },
+  "ga": {
+    "population": 100,
+    "generations": 300,
+    "elitism": 2,
+    "tournament_k": 3,
+    "p_crossover": 0.9,
+    "crossover": "uniform",
+    "p_mutation": 0.05,
+    "mutation_sigma": 0.15,
+    "episodes_per_individual": 4,
+    "episode_seconds": 30.0
+  },
+  "fitness_weights": {
+    "survival": 3.0,
+    "distance": 1.5,
+    "danger": 2.0,
+    "collision": 1.0,
+    "passivity": 1.0,
+    "energy": 0.3
+  }
+}
