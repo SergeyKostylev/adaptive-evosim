@@ -589,6 +589,10 @@ class RunSummary(BaseModel):
     hidden: bool = False
     #: Чемпіона обрано (`champion.json`) — є що показати джерелом `champion`
     champion: bool = False
+    #: `1 − caught_top10`, середнє останніх `SUMMARY_LAST_GENS` поколінь; None — без хижака
+    survival_top10: float | None = None
+    #: Частка тестових епізодів, які пережив чемпіон; None — чемпіона не обрано
+    champion_survival: float | None = None
 
 
 class RunList(BaseModel):

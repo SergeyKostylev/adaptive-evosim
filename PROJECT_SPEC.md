@@ -570,7 +570,7 @@ live-перегляду. Еволюціонує завжди морфологі�
 | `GET` | `/api/preview` | → `{active, preview_id?, source?}` — чи йде зараз прев'ю (є що дивитись у `/ws/live`) |
 | `GET` | `/api/genome/best?run_id=` | → GenomeJSON (розділ 6.1) |
 | `POST` | `/api/simulation/continue` | `{run_id, generations?}` → `{run_id, state:"RUNNING"}`; продовжує прогін з останнього чекпоінта (§11) у тому самому каталозі; `generations` (≥ поточного `ga.generations`) — подовжити прогін; `404` — немає прогону, `409` — щось уже виконується, немає чекпоінта або прогін уже дійшов до `generations` |
-| `GET` | `/api/experiments` | → `{runs:[{run_id, name, created_at, generations_done, generations_total, best_fitness, best_generation, state, archived, last_checkpoint, location, fitness_weights, hidden, champion}]}`, новіші першими (див. нижче) |
+| `GET` | `/api/experiments` | → `{runs:[{run_id, name, created_at, generations_done, generations_total, best_fitness, best_generation, state, archived, last_checkpoint, location, fitness_weights, hidden, champion, survival_top10, champion_survival}]}`, новіші першими (див. нижче) |
 | `GET` | `/api/experiments/{run_id}/export?format=csv\|pdf\|png&chart=fitness\|diversity\|components\|caught` | → файл: CSV метрик, багатосторінковий PDF усіх графіків або PNG одного (`chart`, дефолт `fitness`); копії графіків лягають у `figures/` прогону (§11) |
 | `DELETE` | `/api/experiments/{run_id}` | → `{deleted}` — видалити прогін із `runs/` (кнопки «Скасувати» / «Видалити» з підтвердженням); `409` — прогін виконується або вже є в архіві (там він у git і кнопкою не видаляється), `404` — немає |
 | `PUT` | `/api/experiments/{run_id}/hidden` | `{hidden}` → `{run_id, hidden}` — сховати прогін зі списку «Аналітики» чи повернути; сам прогін не змінюється; `404` — немає прогону |
@@ -655,7 +655,14 @@ live-перегляду. Еволюціонує завжди морфологі�
 буває). `best_fitness`/`best_generation` — рекорд за `metrics.csv` (`null`, якщо
 поколінь ще немає). `fitness_weights` — ваги прогону (§9.3): з ними UI рахує внесок
 компонентів `w_k·c_k` так само, як графік `components` експорту.
-`champion` — чи обрано чемпіона (`champion.json` поруч із прогоном). `hidden` — прогін приховано зі списку (лише налаштування перегляду: прогін не
+`champion` — чи обрано чемпіона (`champion.json` поруч із прогоном). `survival_top10` — частка епізодів, що **не** закінчились спійманням, серед
+топ-10 (`1 − caught_top10`), середня за останні `SUMMARY_LAST_GENS = 20`
+поколінь (одне покоління зі спільними сценаріями шумне); `null`, якщо в
+прогоні немає хижака або колонок спійманих (етап 3). `champion_survival` —
+частка тестових епізодів, які чемпіон пережив (`1 − caught / episodes` з
+`champion.json`), або `null`. UI показує їх бейджами з кольором за критерієм
+DoD п.2 етапу 4: ≥ 80 % (спіймано ≤ 20 %) — зелений, 50–80 % — жовтий, менше —
+червоний; число завжди поруч із кольором. `hidden` — прогін приховано зі списку (лише налаштування перегляду: прогін не
 видаляється й не змінюється). Перелік прихованих — `experiments/hidden_runs.json`
 (`{"hidden": [run_id, …]}`, атомарний запис, поза git); UI фільтрує список:
 «Не приховані» (типово) / «Приховані» / «Усі».

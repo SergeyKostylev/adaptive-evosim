@@ -49,6 +49,8 @@ def test_list_reports_finished_run(client, demo_creature):
     assert run["archived"] is True and run["last_checkpoint"] == 3
     assert run["name"] == "api-test" and run["created_at"].startswith("20")
     assert run["fitness_weights"]["survival"] == C.W_SURVIVAL
+    # Хижака в цьому конфігу немає — «виживання» нічого б не значило
+    assert run["survival_top10"] is None and run["champion_survival"] is None
     rows = client.get("/api/metrics/generations", params={"run_id": run_id}).json()["rows"]
     best = max(rows, key=lambda r: r["best_fitness"])
     assert run["best_fitness"] == best["best_fitness"]
@@ -223,3 +225,23 @@ def test_preview_champion(client, demo_creature):
         assert frame["type"] == "frame"
         assert frame["hud"]["generation"] == report["checkpoint_generation"]
     client.delete("/api/preview")
+
+
+def test_survival_badges(client, demo_creature):
+    from app.export import champion
+    from app.services.experiment_store import RunStore
+
+    cfg = experiment(demo_creature, generations=3)
+    cfg["environment"] = {"spawns": [{"position": [-5, 0], "angle": 0.0}],
+                          "predators": [{"waypoints": [[-8, 0], [0, 4], [8, 3]]}]}
+    run_id = client.post("/api/simulation/start", json=cfg).json()["run_id"]
+    wait_state(client, "STOPPED")
+    rows = client.get("/api/metrics/generations", params={"run_id": run_id}).json()["rows"]
+    expected = 1 - sum(r["caught_top10"] for r in rows) / len(rows)
+    assert runs(client)[run_id]["survival_top10"] == pytest.approx(expected)
+
+    store = RunStore.open(run_id)
+    report = champion.select(store, episodes=4, workers=1)
+    champion.write(store, report)
+    ch = report["champion"]
+    assert runs(client)[run_id]["champion_survival"] == pytest.approx(1 - ch["caught"] / ch["episodes"])

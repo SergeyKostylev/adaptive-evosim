@@ -290,6 +290,12 @@ a.button.disabled { opacity: .45; pointer-events: none; }
 .run-item.selected { border-color: var(--accent); }
 .run-item .name { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .run-item .meta { color: var(--muted); grid-column: 1 / -1; }
+.run-item .badges { grid-column: 1 / -1; display: flex; gap: 6px; flex-wrap: wrap; }
+.surv { font: 11px var(--mono); padding: 1px 7px; border-radius: 999px; border: 1px solid currentColor; }
+.surv.good { color: var(--accent); }
+.surv.mid { color: var(--warn); }
+.surv.bad { color: var(--danger); }
+.surv.none { color: var(--muted); border-style: dashed; }
 .run-item .state { color: var(--muted); }
 .run-item .state.RUNNING { color: var(--accent); }
 .run-item .state.PAUSED { color: var(--warn); }

@@ -165,6 +165,8 @@ METRICS_QUEUE_DEPTH: int = 256
 PLOT_DPI: int = 200
 #: Ковзне середнє часток спійманих на графіку `caught`, поколінь
 PLOT_SMOOTH_WINDOW: int = 10
+#: Скільки останніх поколінь усереднює `survival_top10` у списку прогонів (§9.4)
+SUMMARY_LAST_GENS: int = 20
 #: Графіки експорту в порядку сторінок PDF (§11)
 PLOT_CHARTS: tuple[str, ...] = ("fitness", "diversity", "components", "caught")
 

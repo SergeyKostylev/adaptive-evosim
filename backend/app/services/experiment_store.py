@@ -290,6 +290,14 @@ class RunStore:
         rows = _read_rows(self.path / "metrics.csv")
         best = max(rows, key=lambda r: float(r["best_fitness"]), default=None)
         stamp = self.run_id.split("__")[-1][:13]           # YYYYMMDD-HHMM без суфікса -N
+        # Без хижака «виживання» — завжди 100 %, тож воно нічого не каже
+        env = cfg.get("environment", {})
+        predators = [p for p in env.get("predators", []) if p.get("enabled", True)]
+        if env.get("predator") and not predators:
+            predators = [env["predator"]]                   # стара схема (одне поле)
+        tail = [float(r["caught_top10"]) for r in rows[-C.SUMMARY_LAST_GENS:]
+                if r.get("caught_top10") not in (None, "")]
+        champion = self.load_champion()
         gens = self.checkpoints()
         return {
             "run_id": self.run_id,
@@ -303,7 +311,10 @@ class RunStore:
             "last_checkpoint": gens[-1] if gens else None,
             "location": self.location,
             "fitness_weights": cfg.get("fitness_weights", {}),
-            "champion": (self.path / "champion.json").exists(),
+            "champion": champion is not None,
+            "survival_top10": (1 - sum(tail) / len(tail)) if predators and tail else None,
+            "champion_survival": (1 - champion["champion"]["caught"] / champion["champion"]["episodes"]
+                                  if champion else None),
         }
 
     def read_generations(self, from_gen: int = 0) -> list[dict]:

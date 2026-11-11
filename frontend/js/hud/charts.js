@@ -134,7 +134,15 @@ function renderRuns() {
     const best = r.best_fitness == null ? '—' : r.best_fitness.toFixed(3);
     meta.textContent = `${fmtDate(r.created_at)} · пок. ${r.generations_done}/${r.generations_total}`
       + ` · F ${best}${r.archived ? ' · в архіві' : ''}${r.hidden ? ' · приховано' : ''}`;
-    item.append(name, state, meta);
+    const badges = document.createElement('span');
+    badges.className = 'badges';
+    badges.append(survivalBadge(r.survival_top10, 'виживання',
+      'топ-10 за F: частка епізодів без спіймання, середнє останніх 20 поколінь '
+      + '(зелений ≥ 80 % — критерій етапу 4; жовтий 50–80 %; червоний < 50 %)'));
+    const test = survivalBadge(r.champion_survival, 'тест',
+      'чемпіон на 40 тестових епізодах (однакові для всіх кандидатів): частка, яку він пережив');
+    if (test) badges.append(test);
+    item.append(name, state, badges, meta);
     item.addEventListener('click', async () => {
       if (selected === r.run_id) return;
       selected = r.run_id;
@@ -145,6 +153,25 @@ function renderRuns() {
     });
     box.append(item);
   }
+}
+
+/** Бейдж частки виживання; колір — за критерієм DoD п.2 етапу 4 (спіймано ≤ 20 %). */
+const SURVIVAL_GOOD = 0.8;
+const SURVIVAL_MID = 0.5;
+
+function survivalBadge(value, label, title) {
+  const b = document.createElement('span');
+  if (value == null) {
+    b.className = 'surv none';
+    b.textContent = label === 'тест' ? '' : 'без хижака';
+    b.title = 'у прогоні немає хижака або частки спійманих не записувались (етап 3)';
+    return label === 'тест' ? null : b;
+  }
+  const level = value >= SURVIVAL_GOOD ? 'good' : value >= SURVIVAL_MID ? 'mid' : 'bad';
+  b.className = `surv ${level}`;
+  b.textContent = `${label} ${Math.round(value * 100)} %`;
+  b.title = title;
+  return b;
 }
 
 function current() {
@@ -172,6 +199,10 @@ function renderActions() {
     ['чекпоінт', r.last_checkpoint == null ? 'немає' : `покоління ${r.last_checkpoint}`],
     ['де лежить', r.location === 'runs' ? 'experiments/runs/' : 'лише в архіві'],
     ['архів', r.archived ? 'є (git)' : 'немає'],
+    ['виживання топ-10', r.survival_top10 == null ? 'без хижака'
+      : `${(r.survival_top10 * 100).toFixed(1)} % (ост. 20 пок.)`],
+    ['тест чемпіона', r.champion_survival == null ? '—'
+      : `пережив ${Math.round(r.champion_survival * 100)} % тестових епізодів`],
     ['чемпіон', r.champion ? 'обрано (champion.json)' : 'не обрано — у перегляді буде рекорд'],
   ];
   for (const [k, v] of pairs) {
