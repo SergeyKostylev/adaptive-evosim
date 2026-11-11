@@ -13,7 +13,9 @@ Two specification documents govern the work (both in Ukrainian):
 
 Implementation rule stated in the spec: write code strictly per `PROJECT_SPEC.md`, without inventing math or contracts. Any change to the contracts in §2–9 goes into `PROJECT_SPEC.md` **first**, then into the code.
 
-**Stages 1–4 are implemented; Stage 5 is in progress.** `stage-3` is tagged with the same kind of annotated deviation as `stage-2`: the «best ×2» criterion is unreachable by construction (`D` saturates) — see the open item at the end of `PLAN.md` §Етап 3. `stage-4` is tagged the same way: DoD p.3 (visible reaction to the predator) is unmet — the population memorises the scene's safe heading via its own body angle instead of using predator sensors; the random-scene-rotation experiment is deferred until after Stage 5 (open item in `PLAN.md` §Етап 4, details in `docs/thesis/stage4-experiments.md`).
+**Stages 1–5 are implemented** (all tagged; the deferred Stage-4 p.3 experiment is next). `stage-3` is tagged with the same kind of annotated deviation as `stage-2`: the «best ×2» criterion is unreachable by construction (`D` saturates) — see the open item at the end of `PLAN.md` §Етап 3. `stage-4` is tagged the same way: DoD p.3 (visible reaction to the predator) is unmet — the population memorises the scene's safe heading via its own body angle instead of using predator sensors; the random-scene-rotation experiment is deferred until after Stage 5 (open item in `PLAN.md` §Етап 4, details in `docs/thesis/stage4-experiments.md`).
+
+**Stage 5 (analytics, storage, thesis material)** added: checkpoints `checkpoints/gen_NNN.npz` (population + PCG64 state + record; every `GA_CHECKPOINT_EVERY`, at the last generation and on stop — `run_loop` writes them, always after that generation's `metrics.csv` row), `ga.resume()` (truncate metrics to the checkpoint, restore `best_genome.json`, optionally extend `ga.generations` in `config.json`) behind `POST /api/simulation/continue` and CLI `--resume`; `RunStore.open()` falls back to `archive/` (read-only: no checkpoints there), `list_runs()` merges both for `GET /api/experiments`; `POST /api/experiments/{id}/archive`; `export/csv_export.py`, `export/plots.py` (four charts, `Figure` without pyplot under a lock — REST renders in threads) behind `GET /api/experiments/{id}/export`. Frontend: the **Аналітика** tab (`hud/charts.js`, Chart.js 4.4.1 from cdnjs). Tests: `test_checkpoint_resume.py` (bit-identical resume after crash/stop/extension, real `kill -9`), `test_experiments_api.py`, and a contract test that the app's routes equal the REST table in `PROJECT_SPEC.md` §9.4 — add a new endpoint to the spec table or that test fails.
 
 **Stage 4 (predator, sensors, full fitness)** added: the FSM in `core/predator.py` (closed-loop patrol, random start phase from the episode RNG, CHASE with a no-progress timer, RETURN to the nearest waypoint), radar + aura in `core/sensors.py` (`SENSE_RADAR`/`SENSE_AURA` are now `True`), `S`/`G_aura`/`C` in `FitnessAccumulator` (all six components active), catch as a terminal event in `World.step`, collision callbacks in `PhysicsWorld` (`on_obstacle_contact`, `predator_touched`), `caught_top10`/`caught_all` in `GenerationStats` and `metrics.csv`, preview `source: "live_training"` (latest generation's best, from `sim_manager.latest_best`). Frontend: the **Наживо** toggle (Headless ↔ Live), predator state/aura and all six components in the live HUD, rays coloured by hit type, catch share in the training panel. Tests: `test_predator_sensors.py`, extended `test_fitness.py`/`test_determinism.py`.
 
@@ -21,7 +23,7 @@ Implementation rule stated in the spec: write code strictly per `PROJECT_SPEC.md
 
 **Stage 2 (physics + live view)** added: `core/hydro.py` (scalar `point_force` core + `segment_resultants`; the NumPy `segment_point_forces` is a test-facing wrapper over the same core), `core/creature.py`, `core/obstacles.py`, `core/physics.py`, `core/world.py` (episode facade + `SineController`), predator **bodies only** in `core/predator.py` (FSM is Stage 4), `services/live_stream.py` (`LiveHub`/`PreviewSession`/`PreviewManager`), `POST|DELETE|GET /api/preview` and `WS /ws/live`. Frontend: `ws.js`, live frame drawing in `render/renderer.js` (`showScene`/`showFrame`/`clearLive`, camera follows the creature), live HUD + **Тест-заплив** on the Simulation tab, and a draft **Тест-заплив** button in the editor. Tests: `test_hydro.py`, `test_creature_build.py`, `test_live_preview.py`.
 
-**Stage 1 is implemented and went well past its DoD.** Backend: `config.py`, full `schemas.py`, `POST /api/creature/validate`, `POST /api/predator/validate`, `GET/PUT/DELETE /api/editor/state`, and three libraries under `/api/editor/{creatures,predators,presets}[/{name}]`, all persisted in `experiments/editor/` through `services/editor_store.py`, plus Docker/nginx. Frontend: the three-entity editor, the scene preview on the Simulation tab, and the experiment composer. `export/` and `hud/charts.js` are still docstring-only stubs naming their stage (5). Each stage ends with: green tests → DoD checklist verified → commit tagged `stage-N` (`stage-1` = `c3ca8fc`, `stage-2` = `81cc4bd`, an annotated tag that records the unmet 120k steps/s criterion — `PLAN.md` keeps the criterion unchanged on purpose).
+**Stage 1 is implemented and went well past its DoD.** Backend: `config.py`, full `schemas.py`, `POST /api/creature/validate`, `POST /api/predator/validate`, `GET/PUT/DELETE /api/editor/state`, and three libraries under `/api/editor/{creatures,predators,presets}[/{name}]`, all persisted in `experiments/editor/` through `services/editor_store.py`, plus Docker/nginx. Frontend: the three-entity editor, the scene preview on the Simulation tab, and the experiment composer. Each stage ends with: green tests → DoD checklist verified → commit tagged `stage-N` (`stage-1` = `c3ca8fc`, `stage-2` = `81cc4bd`, an annotated tag that records the unmet 120k steps/s criterion — `PLAN.md` keeps the criterion unchanged on purpose).
 
 ## Commands
 
@@ -38,7 +40,16 @@ SERVE_STATIC=1 uvicorn app.main:app --reload    # dev without Docker, serves fro
 EVOSIM_DATA_DIR=<tmpdir> python -m app.evolution.ga --config exp.json [--generations N] [--workers N]   # headless run, prints a line per generation
 ```
 
-Specified but not yet written: `python -m app.core.world --demo` (Stage 2 leftover), `python -m app.evolution.ga --resume <run_id>` (Stage 5).
+```bash
+python -m app.evolution.ga --resume <run_id> [--generations N]   # continue from the last checkpoint (bit-identical)
+python -m app.export.plots <run_id> [--out DIR]                  # thesis figures, PNG + PDF → figures/
+python -m app.export.csv_export <run_id> [out.csv]
+python -m app.export.reaction <run_dir> [N=40] [out.json]        # «зрячий / сліпий» ablation
+```
+
+Specified but not yet written: `python -m app.core.world --demo` (Stage 2 leftover).
+
+The frontend jsdom approach below cannot run ES modules; for real UI checks use headless Chrome through `puppeteer-core` installed in the scratchpad (`executablePath` = the local Google Chrome).
 
 Stage-3 genomes (and the archived stage-3 `best_genome.json` files) no longer fit: the sensor set grew `n_in` by 27. Previewing them answers 422 by design; their `metrics.csv` stays readable.
 
