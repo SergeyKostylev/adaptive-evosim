@@ -238,3 +238,19 @@ def test_champion_is_reselected_on_shared_test_scenarios(data_dir, demo_creature
     empty = RunStore.create(small_cfg(demo_creature))
     with pytest.raises(ValueError, match="чекпоінт"):
         champion.select(empty)
+
+
+def test_compare_groups_runs_on_one_figure(data_dir, demo_creature, tmp_path):
+    from app.export import compare
+
+    assert compare.parse_group("v2, поворот=a,b") == ("v2, поворот", ["a", "b"])
+    with pytest.raises(ValueError):
+        compare.parse_group("без-рівності")
+    a = run_full(small_cfg(demo_creature, generations=3, name="cmp-a"))
+    b = run_full(small_cfg(demo_creature.copy() | {}, generations=4, name="cmp-b"))
+    gen, curves = compare.group_curves([a.run_id, b.run_id], "caught_top10")
+    assert curves.shape == (2, 3) and list(gen) == [1, 2, 3]          # обрізано до найкоротшого
+    out = tmp_path / "fig"
+    assert compare.main(["--out", str(out), "--name", "t", f"g={a.run_id},{b.run_id}"]) == 0
+    assert {p.name for p in out.iterdir()} == {"t_caught_top10.png", "t_caught_top10.pdf",
+                                                "t_caught_all.png", "t_caught_all.pdf"}

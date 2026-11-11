@@ -64,6 +64,7 @@ docker compose exec backend python -m app.export.plots <run_id із першог
 | Прогін без UI | `python -m app.evolution.ga --config <json> [--generations N] [--workers N]` |
 | Продовжити перерваний / подовжити | «Аналітика» → **Продовжити**, або `python -m app.evolution.ga --resume <run_id> [--generations N]` |
 | Графіки | «Аналітика» → **PDF графіків**, або `python -m app.export.plots <run_id> [--out DIR]` |
+| Кілька прогонів на одному рисунку | `python -m app.export.compare --out DIR --name X "підпис=run_a,run_b" "підпис2=run_c"` — середнє по сідах і розкид min–max |
 | CSV метрик | «Аналітика» → **CSV метрик**, або `python -m app.export.csv_export <run_id> [out.csv]` |
 | Чемпіон прогону | `python -m app.export.champion <run_id> [--episodes 40]` — уся фінальна популяція + рекорд грають однакові тестові епізоди → `champion.json` |
 | Абляція «зрячий / сліпий» | `python -m app.export.reaction experiments/archive/<run_id> [N=40] [out.json]` — бере чемпіона, якщо він є |
