@@ -141,8 +141,7 @@ def test_timing_kept_out_of_metrics(data_dir, demo_creature):
 def test_archive_copies_light_files_once(data_dir, demo_creature):
     """§11: в архів — лише легкі файли, атомарно, без перезапису наявного."""
     store = run_once(small_cfg(demo_creature), workers=1)
-    (store.path / "checkpoints").mkdir()
-    (store.path / "checkpoints" / "gen_025.npz").write_bytes(b"x")
+    assert store.checkpoints()                    # чекпоінти є, але в архів не йдуть
     target = store.archive()
     assert target == data_dir / C.ARCHIVE_SUBDIR / store.run_id
     assert sorted(p.name for p in target.iterdir()) == sorted(C.ARCHIVE_FILES)

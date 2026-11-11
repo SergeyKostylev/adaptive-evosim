@@ -3,7 +3,8 @@
 
 Прогін, що пройшов усі заплановані покоління без помилки, копіюється в
 архів (`experiment_store.RunStore.archive`, §11); зупинений вручну чи упалий —
-лишається тільки в `runs/`.
+лишається тільки в `runs/`, звідки його можна продовжити з чекпоінта
+(`continue_run`) або вручну скопіювати в архів (`archive_run`).
 
 Потік ГА майже весь час чекає на пул процесів оцінки, тож GIL він у event
 loop не забирає: живе прев'ю (`live_stream`) крутиться паралельно. Пауза —
@@ -23,7 +24,7 @@ import numpy as np
 
 from .. import config as C
 from ..evolution.evaluator import EvaluationCancelled, Evaluator
-from ..evolution.ga import GeneticAlgorithm, run_loop
+from ..evolution.ga import GeneticAlgorithm, resume, run_loop
 from ..schemas import ExperimentConfig
 from .experiment_store import RunStore
 
@@ -111,31 +112,66 @@ class SimulationManager:
         self._publish(self.state_packet())
 
     # --- керування ---------------------------------------------------------------
+    @property
+    def busy(self) -> bool:
+        return self.state != "STOPPED" or bool(self._thread and self._thread.is_alive())
+
+    def _check_idle(self) -> None:
+        if self.busy:
+            raise SimulationConflict(f"прогін {self.run_id} уже триває ({self.state})")
+
     def start(self, cfg: ExperimentConfig, workers: int | None = None) -> str:
         with self._lock:
-            if self.state != "STOPPED" or (self._thread and self._thread.is_alive()):
-                raise SimulationConflict(f"прогін {self.run_id} уже триває ({self.state})")
-            self._loop = asyncio.get_running_loop()
+            self._check_idle()
             store = RunStore.create(cfg)
-            self.run_id = store.run_id
-            self.generation = 0
-            self.generations_total = cfg.ga.generations
-            self.population = cfg.ga.population
-            self.error = None
-            self.archived = None
-            self.cfg = cfg
-            self.latest_best = None
-            self._stop.clear()
-            self._running.set()
-            self._started_at = time.monotonic()
-            self._paused_at = None
-            self._paused_total = 0.0
-            self._thread = threading.Thread(
-                target=self._run, args=(cfg, store, workers),
-                name=f"ga-{store.run_id}", daemon=True)
-            self._set_state("RUNNING")
-            self._thread.start()
+            self._launch(cfg, store, GeneticAlgorithm(cfg), workers, extended=False)
             return store.run_id
+
+    def continue_run(self, run_id: str, generations: int | None = None,
+                     workers: int | None = None) -> str:
+        """Продовжити прогін з `runs/` з останнього чекпоінта (§11).
+
+        `RunNotFound` — прогону немає; `SimulationConflict` — щось виконується,
+        немає чекпоінта або продовжувати нікуди.
+        """
+        with self._lock:
+            self._check_idle()
+            store = RunStore.open(run_id, archive=False)
+            try:
+                cfg, ga, extended = resume(store, generations)
+            except ValueError as exc:
+                raise SimulationConflict(str(exc)) from exc
+            self._launch(cfg, store, ga, workers, extended)
+            return store.run_id
+
+    def archive_run(self, run_id: str) -> str:
+        """Ручне архівування зупиненого прогону (§11); поточний — `SimulationConflict`."""
+        if run_id == self.run_id and self.busy:
+            raise SimulationConflict(f"прогін {run_id} ще виконується — архів робиться після зупинки")
+        store = RunStore.open(run_id, archive=False)
+        return str(store.archive().relative_to(C.DATA_DIR))
+
+    def _launch(self, cfg: ExperimentConfig, store: RunStore, ga: GeneticAlgorithm,
+                workers: int | None, extended: bool) -> None:
+        self._loop = asyncio.get_running_loop()
+        self.run_id = store.run_id
+        self.generation = ga.generation - 1
+        self.generations_total = cfg.ga.generations
+        self.population = cfg.ga.population
+        self.error = None
+        self.archived = None
+        self.cfg = cfg
+        self.latest_best = None
+        self._stop.clear()
+        self._running.set()
+        self._started_at = time.monotonic()
+        self._paused_at = None
+        self._paused_total = 0.0
+        self._thread = threading.Thread(
+            target=self._run, args=(cfg, store, ga, workers, extended),
+            name=f"ga-{store.run_id}", daemon=True)
+        self._set_state("RUNNING")
+        self._thread.start()
 
     def pause(self) -> None:
         with self._lock:
@@ -176,9 +212,9 @@ class SimulationManager:
         self.latest_best = (stats["generation"], ga.generation_best)
         self._publish({"type": "generation", "run_id": self.run_id, **stats})
 
-    def _run(self, cfg: ExperimentConfig, store: RunStore, workers: int | None) -> None:
+    def _run(self, cfg: ExperimentConfig, store: RunStore, ga: GeneticAlgorithm,
+             workers: int | None, extended: bool) -> None:
         try:
-            ga = GeneticAlgorithm(cfg)
             with Evaluator(cfg, workers) as evaluator:
                 run_loop(ga, evaluator, store, until=cfg.ga.generations,
                          before_generation=self._before_generation,
@@ -186,7 +222,7 @@ class SimulationManager:
                          cancel=self._stop)
             # В архів — лише прогін, що пройшов усі заплановані покоління (§11)
             if ga.generation > cfg.ga.generations and not self._stop.is_set():
-                self.archived = str(store.archive().relative_to(C.DATA_DIR))
+                self.archived = str(store.archive(replace=extended).relative_to(C.DATA_DIR))
         except EvaluationCancelled:
             pass
         except Exception as exc:          # noqa: BLE001 — потік не має падати мовчки

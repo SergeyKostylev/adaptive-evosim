@@ -528,6 +528,42 @@ class GenerationRows(BaseModel):
     rows: list[GenerationStats] = Field(default_factory=list)
 
 
+class ContinueRequest(BaseModel):
+    """`POST /api/simulation/continue` (§9.4, §11)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: str
+    #: Подовжити прогін до цього числа поколінь; `None` — до збереженого `ga.generations`
+    generations: int | None = Field(default=None, ge=1, le=100_000)
+
+
+class RunSummary(BaseModel):
+    """Рядок `GET /api/experiments` (§9.4)."""
+
+    run_id: str
+    name: str
+    created_at: str
+    generations_done: int
+    generations_total: int
+    best_fitness: float | None = None
+    best_generation: int | None = None
+    state: Literal["RUNNING", "PAUSED", "STOPPED", "COMPLETED"]
+    archived: bool
+    last_checkpoint: int | None = None
+    location: Literal["runs", "archive"]
+
+
+class RunList(BaseModel):
+    runs: list[RunSummary] = Field(default_factory=list)
+
+
+class ArchiveResponse(BaseModel):
+    """`POST /api/experiments/{run_id}/archive` — шлях архіву відносно `experiments/`."""
+
+    archived: str
+
+
 class ErrorBody(BaseModel):
     code: str
     message: str

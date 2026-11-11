@@ -139,3 +139,31 @@ def test_validate_predator_out_of_range(client):
     body = client.post("/api/predator/validate", json={"r_body": 5.0}).json()
     assert body["valid"] is False
     assert any("r_body" in e for e in body["errors"]), body["errors"]
+
+
+def test_every_route_is_in_spec_and_every_spec_route_exists():
+    """§9.4 ↔ код: таблиця REST у специфікації й маршрути застосунку збігаються."""
+    import re
+    from pathlib import Path
+
+    from fastapi.routing import APIRoute, APIWebSocketRoute
+
+    from app.main import app
+
+    spec = Path(__file__).resolve().parents[2] / "PROJECT_SPEC.md"
+    if not spec.exists():                     # образ Docker несе лише backend/
+        import pytest
+        pytest.skip("PROJECT_SPEC.md поза образом")
+    text = spec.read_text(encoding="utf-8")
+    documented = {(m, p.split("?")[0])
+                  for m, p in re.findall(r"^\| `(GET|POST|PUT|DELETE)` \| `([^`]+)`", text, re.M)}
+    documented |= {("WS", p) for p in re.findall(r"^### 9\.\d WebSocket `([^`]+)`", text, re.M)}
+
+    implemented = set()
+    for route in app.routes:
+        if isinstance(route, APIRoute):
+            implemented |= {(m, route.path) for m in route.methods if m != "HEAD"}
+        elif isinstance(route, APIWebSocketRoute):
+            implemented.add(("WS", route.path))
+    implemented = {r for r in implemented if r[1].startswith(("/api", "/ws"))}
+    assert implemented == documented

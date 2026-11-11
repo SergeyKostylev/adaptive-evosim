@@ -151,9 +151,16 @@ ARCHIVE_FILES: tuple[str, ...] = ("config.json", "metrics.csv", "timing.csv", "b
 EDITOR_SUBDIR: str = "editor"       # стан конструктора між сеансами
 RUNS_DIR: str = "experiments/runs"
 RUN_ID_TIME_FMT: str = "%Y%m%d-%H%M"
+#: Чекпоінти ГА (`gen_{NNN}.npz`, кожні `GA_CHECKPOINT_EVERY`) і графіки експорту — у каталозі прогону
+CHECKPOINTS_SUBDIR: str = "checkpoints"
+FIGURES_SUBDIR: str = "figures"
 #: Скільки останніх подій тримає черга клієнта `/ws/metrics`
 METRICS_QUEUE_DEPTH: int = 256
 PLOT_DPI: int = 200
+#: Ковзне середнє часток спійманих на графіку `caught`, поколінь
+PLOT_SMOOTH_WINDOW: int = 10
+#: Графіки експорту в порядку сторінок PDF (§11)
+PLOT_CHARTS: tuple[str, ...] = ("fitness", "diversity", "components", "caught")
 
 
 # --- Похідні величини (§4.4, §5) -------------------------------------------

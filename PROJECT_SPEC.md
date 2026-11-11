@@ -565,9 +565,13 @@ live-перегляду. Еволюціонує завжди морфологі�
 | `GET` | `/api/metrics/generations?run_id=&from_gen=0` | → `{rows:[GenerationStats]}` (розділ 9.6) |
 | `POST` | `/api/preview` | `PreviewRequest` → `PreviewResponse`; стартує live-епізод, кадри йдуть у `/ws/live`; `409`, якщо прев'ю вже активне |
 | `DELETE` | `/api/preview` | зупиняє прев'ю, headless продовжується |
+| `GET` | `/api/preview` | → `{active, preview_id?, source?}` — чи йде зараз прев'ю (є що дивитись у `/ws/live`) |
 | `GET` | `/api/genome/best?run_id=` | → GenomeJSON (розділ 6.1) |
-| `GET` | `/api/experiments` | → `{runs:[{run_id, name, created_at, generations_done, best_fitness, state}]}` |
-| `GET` | `/api/experiments/{run_id}/export?format=csv\|pdf\|png` | → файл (CSV метрик або PDF/PNG графіків) |
+| `POST` | `/api/simulation/continue` | `{run_id, generations?}` → `{run_id, state:"RUNNING"}`; продовжує прогін з останнього чекпоінта (§11) у тому самому каталозі; `generations` (≥ поточного `ga.generations`) — подовжити прогін; `404` — немає прогону, `409` — щось уже виконується, немає чекпоінта або прогін уже дійшов до `generations` |
+| `GET` | `/api/experiments` | → `{runs:[{run_id, name, created_at, generations_done, generations_total, best_fitness, best_generation, state, archived, last_checkpoint, location}]}`, новіші першими (див. нижче) |
+| `GET` | `/api/experiments/{run_id}/export?format=csv\|pdf\|png&chart=fitness\|diversity\|components\|caught` | → файл: CSV метрик, багатосторінковий PDF усіх графіків або PNG одного (`chart`, дефолт `fitness`); копії графіків лягають у `figures/` прогону (§11) |
+| `POST` | `/api/experiments/{run_id}/archive` | → `{archived}` — вручну скопіювати в архів зупинений прогін, цінний для висновків (§11); `409`, якщо прогін зараз виконується |
+| `GET` | `/api/health` | → `{ok, version, dt}` — перевірка, що бекенд живий (і з яким кроком фізики) |
 | `GET` | `/api/editor/state` | → `{exists, saved_at?, state?}` — остання сцена конструктора |
 | `PUT` | `/api/editor/state` | `{creature, environment, predator?, predator_name?, scene_name?, ga?, fitness_weights?}` → те саме + `saved_at`; `413`, якщо > 1 МіБ |
 | `DELETE` | `/api/editor/state` | → `{exists:false}` — прибирає збережену сцену |
@@ -634,6 +638,17 @@ live-перегляду. Еволюціонує завжди морфологі�
 тут **не валідуються** проти 9.1–9.2: це чернетка, яка може бути незавершеною
 (істота без кінцівок, сцена без хижака). Строга перевірка — у
 `/api/creature/validate` та перед запуском ГА. Запис атомарний (tmp + `os.replace`).
+
+**Список прогонів** (`GET /api/experiments`) — об'єднання `runs/` і `archive/`:
+прогін, що є лише в архіві (наприклад, свіжий `git clone`), теж видно, і його
+так само можна експортувати. `location` — `"runs"` або `"archive"` (звідки
+читаються дані; локальна копія має пріоритет), `archived` — чи є копія в архіві.
+`created_at` — ISO-час зі штампа `run_id`. `state`: `RUNNING`/`PAUSED` — поточний
+прогін менеджера, `COMPLETED` — `generations_done ≥ generations_total`, інакше
+`STOPPED` (зупинений або аварійно перерваний). `last_checkpoint` — номер
+покоління останнього чекпоінта або `null` (немає чекпоінтів; в архіві їх не
+буває). `best_fitness`/`best_generation` — рекорд за `metrics.csv` (`null`, якщо
+поколінь ще немає).
 
 Помилки — єдиний формат: `{"error": {"code": "VALIDATION_ERROR", "message": "...", "details": [...]}}` з відповідним HTTP-статусом.
 
@@ -809,7 +824,7 @@ experiments/runs/{run_id}/            # run_id = "{name}__{YYYYMMDD-HHMM}"
 ├── timing.csv                        # eval_seconds, sim_fps_equivalent по поколіннях (залежать від машини)
 ├── best_genome.json                  # найкращий за весь прогін (GenomeJSON)
 ├── checkpoints/
-│   └── gen_{NNN}.npz                 # population (P×G float32) + rng state, кожні 25 поколінь
+│   └── gen_{NNN}.npz                 # стан ГА після покоління NNN: популяція + стан генератора + рекорд
 └── figures/                          # генерується export-ом
     ├── fitness.png / fitness.pdf     # Best/Avg ± std, matplotlib, стиль для друку (білий фон!)
     ├── diversity.png / diversity.pdf
@@ -836,8 +851,43 @@ experiments/archive/{run_id}/         # копія ЗАВЕРШЕНОГО про
   завершення несе `archived` — шлях архіву відносно `experiments/` або `null`.
 - Запис `metrics.csv` — append після кожного покоління (crash-safe).
 - `POST /api/simulation/start` з тим самим `name` створює новий `run_id` (новий timestamp), нічого не перезаписує; якщо каталог із таким `run_id` уже є (два старти за одну хвилину), додається суфікс `-2`, `-3`, ….
-- Чекпоінт дозволяє відновити еволюцію (CLI: `python -m app.evolution.ga --resume <run_id>` — додатково, після M5).
-- Графіки для дипломної: matplotlib, `dpi=200`, підписи осей українською, збереження у PNG та PDF (векторний — для LaTeX/Word).
+- **Чекпоінт** `checkpoints/gen_{NNN}.npz` — повний стан ГА **після** покоління
+  `NNN` (оцінка → статистика → відтворення): `population` (P×G float32, уже
+  наступне покоління), `rng_state` (JSON стану PCG64), `generation = NNN`,
+  `best_fitness`, `best_genome`, `best_generation`. Пишеться атомарно (tmp +
+  `os.replace`) після рядка `metrics.csv` цього покоління: кожні
+  `GA_CHECKPOINT_EVERY = 25` поколінь, на останньому поколінні прогону і при
+  зупинці (стан після останнього **завершеного** покоління — перерване
+  покоління генератор не чіпало). Аварійне вбивство процесу лишає останній
+  чекпоінт кратним 25.
+- **Продовження** (`POST /api/simulation/continue`, CLI
+  `python -m app.evolution.ga --resume <run_id> [--generations N]`) бере
+  останній чекпоінт із `runs/` (з архіву — ні: там чекпоінтів немає), обрізає
+  `metrics.csv`/`timing.csv` до покоління `NNN`, відновлює `best_genome.json`
+  з чекпоінта й веде еволюцію далі в тому самому каталозі (той самий `run_id`).
+  Сіди епізодів залежать лише від `(run_seed, gen, i, e)`, а генератор
+  відновлено побітово, тож продовжений прогін дає **побітово той самий**
+  `metrics.csv`, що й неперервний (R7, `test_checkpoint_resume.py`).
+  `generations` більше за збережене подовжує прогін: нове значення записується
+  в `config.json` (це єдине поле, яке продовження змінює). Продовжений прогін,
+  що дійшов до кінця, архівується тим самим правилом; наявна копія в архіві
+  тоді замінюється (атомарно), бо подовжений прогін — її надмножина.
+- **Ручне архівування** (`POST /api/experiments/{run_id}/archive`): зупинений
+  прогін, важливий для висновків (як `exp-baseline-01`, зупинений на 169/200),
+  можна скопіювати в архів кнопкою; в архіві він лишається неповним, і це видно
+  зі списку прогонів (`generations_done < generations_total`).
+- Графіки для дипломної: matplotlib, `dpi=200`, підписи осей українською, збереження у PNG та PDF (векторний — для LaTeX/Word). Чотири графіки (`app/export/plots.py`, CLI `python -m app.export.plots <run_id> [--out DIR]`):
+  - `fitness` — найкращий і середній фітнес по поколіннях, середнє ± std смугою;
+  - `diversity` — різноманіття популяції (§6.2);
+  - `components` — внесок компонентів у `F` найкращої особини, `w_k·c_k` зі
+    знаком формули §7.1: `S`, `D` — стосом над нулем, штрафи — під нулем;
+    чорна лінія — їхня сума (= `best_fitness`);
+  - `caught` — частки спійманих `caught_top10`/`caught_all` (§9.6), сирі
+    значення тонко й ковзне середнє за 10 поколінь; лише для прогонів, де ці
+    колонки є (з етапу 4).
+- CSV експорту (`app/export/csv_export.py`) — `metrics.csv` з доданими
+  `eval_seconds, sim_fps_equivalent` з `timing.csv` (стовпці в кінці), один
+  рядок на покоління, UTF-8, роздільник `,`.
 
 ---
 

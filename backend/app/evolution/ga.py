@@ -6,7 +6,11 @@
 покоління. Оцінка генератор не чіпає — епізоди мають власні сіди
 (`evaluator.episode_seed`), тож кількість воркерів на результат не впливає.
 
-CLI: `python -m app.evolution.ga --config <json> [--generations N] [--workers N]`.
+Стан після покоління (популяція, генератор, рекорд) зберігається чекпоінтом
+(§11), і продовження з нього побітово тотожне неперервному прогону.
+
+CLI: `python -m app.evolution.ga --config <json> [--generations N] [--workers N]`
+або `--resume <run_id> [--generations N]`.
 """
 
 from __future__ import annotations
@@ -23,7 +27,7 @@ import numpy as np
 from .. import config as C
 from ..schemas import ExperimentConfig
 from . import genome as G
-from .evaluator import Evaluator
+from .evaluator import EvaluationCancelled, Evaluator
 
 
 class GeneticAlgorithm:
@@ -44,6 +48,35 @@ class GeneticAlgorithm:
         #: Чи оновило останнє покоління рекорд прогону (→ переписати `best_genome.json`)
         self.improved = False
         self.generation_best: np.ndarray | None = None
+
+    # --- чекпоінт (§11) --------------------------------------------------------
+    def checkpoint_state(self) -> dict:
+        """Стан після останнього завершеного покоління — все, що потрібно, щоб
+        продовжити побітово так само. Перерване покоління генератор не чіпало
+        (оцінка його не використовує), тож стан після зупинки теж коректний."""
+        return {
+            "population": self.population,
+            "rng_state": self.rng.bit_generator.state,
+            "generation": self.generation - 1,
+            "best_fitness": self.best_fitness,
+            "best_genome": self.best_genome,
+            "best_generation": self.best_generation,
+        }
+
+    @classmethod
+    def from_checkpoint(cls, cfg: ExperimentConfig, state: dict) -> "GeneticAlgorithm":
+        ga = cls(cfg)
+        expected = (cfg.ga.population, cfg.creature.genome_size)
+        if state["population"].shape != expected:
+            raise ValueError(f"чекпоінт не відповідає конфігу: популяція "
+                             f"{state['population'].shape}, очікувано {expected}")
+        ga.population = state["population"].astype(np.float32, copy=True)
+        ga.rng.bit_generator.state = state["rng_state"]
+        ga.generation = state["generation"] + 1
+        ga.best_fitness = state["best_fitness"]
+        ga.best_genome = state["best_genome"]
+        ga.best_generation = state["best_generation"]
+        return ga
 
     # --- оператори (§6.2) ---------------------------------------------------
     def tournament(self, fitness: np.ndarray) -> int:
@@ -115,39 +148,103 @@ def run_loop(
 ) -> None:
     """Покоління до `until` включно. `before_generation() → False` зупиняє цикл
     (там же чекає пауза); запис у сховище — до публікації, щоб клієнт, який
-    отримав подію, міг одразу дочитати її з REST."""
-    while ga.generation <= until:
-        if before_generation is not None and not before_generation():
-            return
-        stats = ga.step(evaluator, cancel)
-        if store is not None:
-            store.append_generation(stats)
-            if ga.improved:
-                store.save_best_genome(G.to_json(ga.best_genome, ga.creature))
-        if on_generation is not None:
-            on_generation(stats)
+    отримав подію, міг одразу дочитати її з REST.
+
+    Чекпоінт (§11) — кожні `GA_CHECKPOINT_EVERY` поколінь, на `until` і при
+    зупинці, завжди після рядка `metrics.csv` того самого покоління.
+    """
+    saved = -1
+
+    def checkpoint() -> None:
+        nonlocal saved
+        done = ga.generation - 1
+        if store is not None and done >= 1 and done != saved:
+            store.save_checkpoint(ga.checkpoint_state())
+            saved = done
+
+    try:
+        while ga.generation <= until:
+            if before_generation is not None and not before_generation():
+                checkpoint()
+                return
+            stats = ga.step(evaluator, cancel)
+            if store is not None:
+                store.append_generation(stats)
+                if ga.improved:
+                    store.save_best_genome(G.to_json(ga.best_genome, ga.creature))
+                if stats["generation"] % C.GA_CHECKPOINT_EVERY == 0 or stats["generation"] == until:
+                    checkpoint()
+            if on_generation is not None:
+                on_generation(stats)
+    except EvaluationCancelled:
+        checkpoint()
+        raise
+
+
+def resume(store, generations: int | None = None):
+    """Підготувати продовження прогону з останнього чекпоінта (§11).
+
+    Обрізає метрики до покоління чекпоінта, відновлює `best_genome.json`,
+    за потреби подовжує `ga.generations` у `config.json`. Повертає
+    `(cfg, ga, extended)`; `ValueError` — продовжувати нема з чого або нікуди.
+    """
+    cfg = store.load_config()
+    state = store.load_checkpoint()
+    if state is None:
+        raise ValueError(f"у прогоні {store.run_id} немає чекпоінтів — продовжити нема з чого")
+    total = cfg.ga.generations
+    if generations is not None:
+        if generations < total:
+            raise ValueError(f"поколінь {generations} менше, ніж уже заплановано ({total})")
+        total = generations
+    if state["generation"] >= total:
+        raise ValueError(f"прогін {store.run_id} уже дійшов до покоління {total}; "
+                         "щоб іти далі, задайте більше поколінь")
+    extended = total > cfg.ga.generations
+    if extended:
+        cfg = cfg.model_copy(update={"ga": cfg.ga.model_copy(update={"generations": total})})
+        store.save_config(cfg)
+    ga = GeneticAlgorithm.from_checkpoint(cfg, state)
+    store.truncate_to(state["generation"])
+    if ga.best_genome is not None:
+        store.save_best_genome(G.to_json(ga.best_genome, ga.creature))
+    return cfg, ga, extended
 
 
 # --- CLI ----------------------------------------------------------------------
 def main(argv: list[str] | None = None) -> int:
-    from ..services.experiment_store import RunStore
+    from ..services.experiment_store import RunNotFound, RunStore
 
     parser = argparse.ArgumentParser(prog="python -m app.evolution.ga",
                                      description="Headless-еволюція за ExperimentConfig (§9.3)")
-    parser.add_argument("--config", required=True, type=Path, help="JSON з ExperimentConfig")
-    parser.add_argument("--generations", type=int, help="перекриває ga.generations")
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--config", type=Path, help="JSON з ExperimentConfig")
+    source.add_argument("--resume", metavar="RUN_ID",
+                        help="продовжити прогін з runs/ з останнього чекпоінта (§11)")
+    parser.add_argument("--generations", type=int,
+                        help="перекриває ga.generations (з --resume — подовжує прогін)")
     parser.add_argument("--workers", type=int, default=None,
                         help="процесів оцінки (0 — auto, 1 — без пулу)")
     args = parser.parse_args(argv)
 
-    cfg = ExperimentConfig.model_validate_json(args.config.read_text(encoding="utf-8"))
-    if args.generations:
-        cfg = cfg.model_copy(update={"ga": cfg.ga.model_copy(update={"generations": args.generations})})
-
-    store = RunStore.create(cfg)
-    ga = GeneticAlgorithm(cfg)
-    print(f"прогін {store.run_id}: P={cfg.ga.population}, поколінь {cfg.ga.generations}, "
-          f"n_in={cfg.creature.n_in}, геном {cfg.creature.genome_size}", flush=True)
+    extended = False
+    if args.resume:
+        try:
+            store = RunStore.open(args.resume, archive=False)
+            cfg, ga, extended = resume(store, args.generations)
+        except (RunNotFound, ValueError) as exc:
+            print(f"помилка: {exc}", file=sys.stderr)
+            return 2
+        print(f"продовження {store.run_id} з покоління {ga.generation} до {cfg.ga.generations}",
+              flush=True)
+    else:
+        cfg = ExperimentConfig.model_validate_json(args.config.read_text(encoding="utf-8"))
+        if args.generations:
+            cfg = cfg.model_copy(update={"ga": cfg.ga.model_copy(update={"generations": args.generations})})
+        store = RunStore.create(cfg)
+        ga = GeneticAlgorithm(cfg)
+        print(f"прогін {store.run_id}: P={cfg.ga.population}, поколінь {cfg.ga.generations}, "
+              f"n_in={cfg.creature.n_in}, геном {cfg.creature.genome_size}", flush=True)
 
     def report(s: dict) -> None:
         comps = " ".join(f"{k}={v:.3f}" for k, v in s["best_components"].items()
@@ -159,7 +256,7 @@ def main(argv: list[str] | None = None) -> int:
 
     with Evaluator(cfg, args.workers) as evaluator:
         run_loop(ga, evaluator, store, until=cfg.ga.generations, on_generation=report)
-    archived = store.archive()          # сюди доходить лише завершений прогін (§11)
+    archived = store.archive(replace=extended)   # сюди доходить лише завершений прогін (§11)
     print(f"готово: найкращий F={ga.best_fitness:.4f} (покоління {ga.best_generation}), "
           f"{store.path}; архів — {archived}", flush=True)
     return 0

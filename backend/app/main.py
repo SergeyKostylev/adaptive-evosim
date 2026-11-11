@@ -4,7 +4,8 @@
 (`POST /api/preview` + `/ws/live`). Етап 3: керування ГА (`/api/simulation/*`),
 метрики поколінь (`/api/metrics/generations`, `/ws/metrics`), найкращий геном
 і прев'ю геному (`source: "genome" | "best"`). Етап 4: `source: "live_training"`
-— перемикач Headless ↔ Live.
+— перемикач Headless ↔ Live. Етап 5: продовження прогону з чекпоінта,
+список прогонів, експорт CSV/PDF/PNG, ручне архівування.
 """
 
 from __future__ import annotations
@@ -15,13 +16,15 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect, status
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from pydantic import ValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from . import config as C
 from .core.world import World
 from .schemas import (
+    ArchiveResponse,
+    ContinueRequest,
     CreatureConfig,
     CreatureList,
     CreatureMeta,
@@ -42,6 +45,8 @@ from .schemas import (
     PreviewRequest,
     PreviewResponse,
     PreviewState,
+    RunList,
+    RunSummary,
     SavedCreature,
     SavedPredator,
     SimulationControlResponse,
@@ -49,7 +54,8 @@ from .schemas import (
 )
 from .evolution import genome as genome_ops
 from .services import editor_store, live_stream
-from .services.experiment_store import RunNotFound, RunStore
+from .export import csv_export, plots
+from .services.experiment_store import RunNotFound, RunStore, list_runs
 from .services.sim_manager import SimulationConflict
 from .services.sim_manager import manager as sim
 
@@ -175,6 +181,18 @@ async def simulation_start(payload: ExperimentConfig) -> SimulationControlRespon
     return SimulationControlResponse(state=sim.state, run_id=run_id)
 
 
+@app.post("/api/simulation/continue", response_model=SimulationControlResponse)
+async def simulation_continue(payload: ContinueRequest) -> SimulationControlResponse:
+    """Продовжує прогін з останнього чекпоінта в тому самому каталозі (§11)."""
+    try:
+        run_id = sim.continue_run(payload.run_id, payload.generations)
+    except RunNotFound as exc:
+        raise StarletteHTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except SimulationConflict as exc:
+        raise _conflict(exc)
+    return SimulationControlResponse(state=sim.state, run_id=run_id)
+
+
 @app.post("/api/simulation/pause", response_model=SimulationControlResponse)
 async def simulation_pause() -> SimulationControlResponse:
     """Пауза між поколіннями: поточне покоління дооцінюється й записується."""
@@ -231,6 +249,80 @@ async def genome_best(run_id: str | None = None) -> GenomeJSON:
         raise StarletteHTTPException(status_code=status.HTTP_404_NOT_FOUND,
                                      detail=f"У прогоні {store.run_id} ще немає оціненого покоління")
     return GenomeJSON.model_validate(data)
+
+
+# --- Прогони й експорт (§9.4, §11) ---------------------------------------------
+def _run_state(summary: dict) -> str:
+    if summary["run_id"] == sim.run_id and sim.state != "STOPPED":
+        return sim.state
+    return "COMPLETED" if summary["generations_done"] >= summary["generations_total"] else "STOPPED"
+
+
+@app.get("/api/experiments", response_model=RunList)
+async def experiments_list() -> RunList:
+    runs = []
+    for store in await asyncio.to_thread(list_runs):
+        summary = await asyncio.to_thread(store.summary)
+        runs.append(RunSummary(**summary, state=_run_state(summary)))
+    return RunList(runs=runs)
+
+
+EXPORT_TYPES = {"csv": "text/csv; charset=utf-8", "pdf": "application/pdf", "png": "image/png"}
+
+
+@app.get("/api/experiments/{run_id}/export")
+async def experiments_export(run_id: str, format: str = "csv", chart: str = "fitness") -> Response:
+    """CSV метрик, PDF усіх графіків або PNG одного; копія графіків — у `figures/`."""
+    if format not in EXPORT_TYPES:
+        raise StarletteHTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                     detail=f"format: одне з {', '.join(EXPORT_TYPES)}")
+    if chart not in C.PLOT_CHARTS:
+        raise StarletteHTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                                     detail=f"chart: одне з {', '.join(C.PLOT_CHARTS)}")
+    store = _open_run(run_id)
+    if format == "csv":
+        body = await asyncio.to_thread(csv_export.export_csv, store)
+        filename = f"{store.run_id}.csv"
+    else:
+        rows = await asyncio.to_thread(store.read_generations)
+        if not rows:
+            raise StarletteHTTPException(status_code=status.HTTP_409_CONFLICT,
+                                         detail=f"У прогоні {store.run_id} ще немає поколінь")
+        if chart not in plots.charts_for(rows):
+            raise StarletteHTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"У прогоні {store.run_id} немає даних для графіка «{chart}»")
+        # Файли в figures/ — побічний продукт для дипломної; сама відповідь
+        # від них не залежить, тож запис у теку лише для читання не заважає
+        await asyncio.to_thread(_write_figures_quietly, store)
+        weights = store.load_config().fitness_weights
+        if format == "pdf":
+            body = await asyncio.to_thread(plots.render_pdf, rows, weights, store.run_id)
+            filename = f"{store.run_id}.pdf"
+        else:
+            body = await asyncio.to_thread(plots.render_png, chart, rows, weights)
+            filename = f"{store.run_id}__{chart}.png"
+    return Response(content=body, media_type=EXPORT_TYPES[format],
+                    headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+def _write_figures_quietly(store: RunStore) -> None:
+    try:
+        plots.write_figures(store)
+    except OSError:
+        pass
+
+
+@app.post("/api/experiments/{run_id}/archive", response_model=ArchiveResponse)
+async def experiments_archive(run_id: str) -> ArchiveResponse:
+    """Ручне архівування зупиненого прогону (§11); наявна копія не перезаписується."""
+    try:
+        archived = await asyncio.to_thread(sim.archive_run, run_id)
+    except RunNotFound as exc:
+        raise StarletteHTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except SimulationConflict as exc:
+        raise _conflict(exc)
+    return ArchiveResponse(archived=archived)
 
 
 @app.websocket("/ws/metrics")
