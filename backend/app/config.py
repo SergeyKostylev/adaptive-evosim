@@ -87,6 +87,10 @@ GA_EPISODES_PER_INDIVIDUAL: int = 2
 GA_EPISODE_SECONDS: float = 30.0
 #: Спільні сценарії епізодів у поколінні (§6.2); `False` — щоб старші конфіги відтворювались
 GA_SHARED_SCENARIOS: bool = False
+#: Поворот усієї сцени на випадковий кут у кожному епізоді (§6.2); false — для старих конфігів (R7)
+GA_SCENE_ROTATION: bool = False
+#: `spawn_key` потоку кута повороту відносно сіда епізоду: окремий від генератора епізоду (§6.2)
+SCENE_ROTATION_STREAM: int = 1
 GA_DIVERSITY_SAMPLE: int = 20
 GA_CHECKPOINT_EVERY: int = 25
 #: Процесів оцінки: env `WORKERS_EVAL` (§12), 0 = auto (`cpu_count − 1`);

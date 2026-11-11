@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -246,6 +247,24 @@ class EnvironmentConfig(_Model):
     def enabled_predators(self) -> list[PredatorConfig]:
         return [p for p in self.predators if p.enabled]
 
+    def scene_radius(self) -> float:
+        """Найдальша від центру світу точка сцени: маршрути, старти, перешкоди
+        з розмірами. Повернута сцена лишається всередині світу, лише якщо
+        вона ≤ `min(W, H)/2` (§6.2, поворот сцени)."""
+        norm = lambda v: math.hypot(v[0], v[1])          # noqa: E731
+        far = [0.0]
+        far += [norm(w) for p in self.predators for w in p.waypoints]
+        far += [norm(s.position) for s in self.spawns]
+        for o in self.obstacles:
+            if o.type == "static_circle":
+                far.append(norm(o.position) + o.radius)
+            elif o.type == "static_polygon":
+                far.append(norm(o.position) + max(norm(v) for v in o.vertices))
+            else:
+                reach = max(norm(v) for v in o.vertices)
+                far += [norm(o.p1) + reach, norm(o.p2) + reach]
+        return max(far)
+
 
 # ---------------------------------------------------------------------------
 # §9.3 ExperimentConfig
@@ -263,6 +282,8 @@ class GAConfig(_Model):
     episode_seconds: float = Field(default=C.GA_EPISODE_SECONDS, gt=0)
     #: Усі особини покоління проходять ті самі сценарії (сід без `individual`, §6.2)
     shared_scenarios: bool = C.GA_SHARED_SCENARIOS
+    #: Уся сцена повертається на випадковий кут у кожному епізоді (§6.2)
+    scene_rotation: bool = C.GA_SCENE_ROTATION
 
     @model_validator(mode="after")
     def _elitism_fits(self) -> "GAConfig":
@@ -289,6 +310,17 @@ class ExperimentConfig(_Model):
     environment: EnvironmentConfig = Field(default_factory=EnvironmentConfig)
     ga: GAConfig = Field(default_factory=GAConfig)
     fitness_weights: FitnessWeights = Field(default_factory=FitnessWeights)
+
+    @model_validator(mode="after")
+    def _rotation_fits(self) -> "ExperimentConfig":
+        if self.ga.scene_rotation:
+            limit = min(self.environment.world.width, self.environment.world.height) / 2
+            radius = self.environment.scene_radius()
+            if radius > limit:
+                raise ValueError(
+                    f"поворот сцени: сцена сягає {radius:.1f} од. від центру, а вміщається "
+                    f"лише {limit:.1f} (min(W, H)/2) — повернута, вона вийшла б за стіни")
+        return self
 
 
 # ---------------------------------------------------------------------------

@@ -24,6 +24,44 @@ from .physics import PhysicsWorld
 from .sensors import Sensors
 
 
+# --- Поворот сцени (§6.2) --------------------------------------------------------
+def scene_angle(seed: int) -> float:
+    """Кут повороту сцени епізоду: окремий потік `SeedSequence(seed, (1,))`,
+    тож генератор епізоду (фази патруля, §7.3) споживається як і раніше."""
+    seq = np.random.SeedSequence(int(seed), spawn_key=(C.SCENE_ROTATION_STREAM,))
+    return float(np.random.Generator(np.random.PCG64(seq)).random() * 2 * math.pi)
+
+
+def rotate_environment(env: EnvironmentConfig, theta: float) -> EnvironmentConfig:
+    """Копія сцени, повернута навколо центру світу на `theta`; стіни не повертаються.
+
+    Вершини полігонів — у локальних координатах тіла, тож статичному полігону
+    досить повернути позицію й додати `theta` до кута; у рухомого кута немає —
+    повертаються його вершини й обидві крайні точки.
+    """
+    c, s = math.cos(theta), math.sin(theta)
+
+    def rot(v):
+        return [c * v[0] - s * v[1], s * v[0] + c * v[1]]
+
+    data = env.model_dump()
+    for p in data["predators"]:
+        p["waypoints"] = [rot(w) for w in p["waypoints"]]
+    for sp in data["spawns"]:
+        sp["position"] = rot(sp["position"])
+        sp["angle"] = sp["angle"] + theta
+    for o in data["obstacles"]:
+        if o["type"] == "static_circle":
+            o["position"] = rot(o["position"])
+        elif o["type"] == "static_polygon":
+            o["position"] = rot(o["position"])
+            o["angle"] = o["angle"] + theta
+        else:
+            o["vertices"] = [rot(v) for v in o["vertices"]]
+            o["p1"], o["p2"] = rot(o["p1"]), rot(o["p2"])
+    return EnvironmentConfig.model_validate(data)
+
+
 class SineController:
     """Тестовий контролер-синусоїда (§2.4): `u_j = sin(2π·f·t + φ_j)`.
 
@@ -71,8 +109,13 @@ class World:
         episode_seconds: float = C.GA_EPISODE_SECONDS,
         spawn_index: int = 0,
         weights: FitnessWeights | None = None,
+        rotate_scene: bool = False,
     ):
         self.creature_cfg = creature_cfg
+        #: Кут повороту сцени цього епізоду (§6.2); 0 — сцена як є
+        self.scene_rotation = scene_angle(seed) if rotate_scene else 0.0
+        if rotate_scene:
+            env_cfg = rotate_environment(env_cfg, self.scene_rotation)
         self.env = env_cfg
         self.genome = genome
         self.seed = int(seed)

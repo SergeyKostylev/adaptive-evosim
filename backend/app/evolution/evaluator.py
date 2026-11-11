@@ -59,12 +59,13 @@ class _Spec:
     episode_seconds: float
     run_seed: int
     shared_scenarios: bool = False
+    scene_rotation: bool = False
 
     @classmethod
     def from_experiment(cls, cfg: ExperimentConfig) -> "_Spec":
         return cls(cfg.creature, cfg.environment, cfg.fitness_weights,
                    cfg.ga.episodes_per_individual, cfg.ga.episode_seconds, cfg.seed,
-                   cfg.ga.shared_scenarios)
+                   cfg.ga.shared_scenarios, cfg.ga.scene_rotation)
 
 
 def evaluate_individual(spec: _Spec, genome: np.ndarray, gen: int, individual: int
@@ -80,7 +81,7 @@ def evaluate_individual(spec: _Spec, genome: np.ndarray, gen: int, individual: i
             spec.creature, spec.environment, genome=genome,
             seed=episode_seed(spec.run_seed, gen, individual, e, spec.shared_scenarios),
             episode_seconds=spec.episode_seconds, spawn_index=e,
-            weights=spec.weights,
+            weights=spec.weights, rotate_scene=spec.scene_rotation,
         )
         world.run()
         f, comps = world.fitness_result()

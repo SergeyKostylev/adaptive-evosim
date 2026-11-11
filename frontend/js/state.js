@@ -137,6 +137,7 @@ export function buildExperimentConfig() {
   const ga = { crossover: 'uniform' };
   for (const f of GA_FIELDS) ga[f] = Number($(`#ga-${f}`).value);
   ga.shared_scenarios = $('#ga-shared_scenarios').checked;
+  ga.scene_rotation = $('#ga-scene_rotation').checked;
   const fitness_weights = {};
   for (const f of FW_FIELDS) fitness_weights[f] = Number($(`#fw-${f}`).value);
   return {
@@ -165,6 +166,7 @@ export function applyExperimentForm(saved) {
     for (const f of GA_FIELDS) if (saved.ga[f] != null) $(`#ga-${f}`).value = saved.ga[f];
     // стан без поля (до §6.2-прапорця) лишає галочку з розмітки — нові прогони зі спільними сценаріями
     if (saved.ga.shared_scenarios != null) $('#ga-shared_scenarios').checked = saved.ga.shared_scenarios;
+    if (saved.ga.scene_rotation != null) $('#ga-scene_rotation').checked = saved.ga.scene_rotation;
     if (saved.ga.name) $('#ga-name').value = saved.ga.name;
     if (saved.ga.seed != null) $('#ga-seed').value = saved.ga.seed;
   }

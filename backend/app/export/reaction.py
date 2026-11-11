@@ -41,7 +41,7 @@ class Blind:
 def play(cfg, genome, seed, spawn, blind):
     w = World(cfg.creature, cfg.environment, genome, seed,
               episode_seconds=cfg.ga.episode_seconds, spawn_index=spawn,
-              weights=cfg.fitness_weights)
+              weights=cfg.fitness_weights, rotate_scene=cfg.ga.scene_rotation)
     if blind:
         w.controller = Blind(w.brain)
     log = []                          # (t, x, y, [(px, py, state)…]) на control-тиках

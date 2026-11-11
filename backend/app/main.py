@@ -446,6 +446,8 @@ async def start_preview(payload: PreviewRequest) -> PreviewResponse:
             creature, environment, genome=current_genome(), seed=payload.seed + shift,
             episode_seconds=episode_seconds,
             spawn_index=payload.spawn_index + shift, weights=weights,
+            # Геном прогону з поворотом сцени дивимось у таких самих умовах (§6.2)
+            rotate_scene=varied and run_cfg.ga.scene_rotation,
         )
         world.generation = generation_of()
         return world
