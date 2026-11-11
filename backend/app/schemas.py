@@ -593,6 +593,12 @@ class RunList(BaseModel):
     runs: list[RunSummary] = Field(default_factory=list)
 
 
+class DeleteResponse(BaseModel):
+    """`DELETE /api/experiments/{run_id}` (§9.4)."""
+
+    deleted: str
+
+
 class HiddenRequest(BaseModel):
     """`PUT /api/experiments/{run_id}/hidden` (§9.4)."""
 

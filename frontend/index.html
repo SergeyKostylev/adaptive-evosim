@@ -363,6 +363,9 @@
           <button id="sim-resume" disabled>Продовжити</button>
           <button id="sim-stop" disabled>Стоп</button>
         </div>
+        <div class="btns" style="margin-top:6px">
+          <button id="sim-cancel" class="danger" disabled title="DELETE /api/experiments/{run_id} — зупинити (якщо йде) і видалити прогін з experiments/runs/; архівні прогони (git) не видаляються">Скасувати й видалити прогін</button>
+        </div>
         <p class="small muted" id="train-msg" style="margin-bottom:0">Навчання бере вибрані вище
           збережені сутності й параметри з цієї панелі.</p>
       </div>
@@ -512,6 +515,7 @@
           <button id="an-continue" title="POST /api/simulation/continue — з останнього чекпоінта, той самий run_id">Продовжити</button>
         </div>
         <div class="btns" style="margin-top:6px">
+          <button id="an-delete" class="danger" title="DELETE /api/experiments/{run_id} — видалити зупинений прогін з experiments/runs/; архівні (git) не видаляються">Видалити</button>
           <button id="an-hide" title="PUT /api/experiments/{run_id}/hidden — лише прибирає зі списку; прогін і архів не змінюються">Приховати</button>
           <button id="an-archive" title="POST /api/experiments/{run_id}/archive — скопіювати зупинений прогін в архів (git)">В архів</button>
         </div>

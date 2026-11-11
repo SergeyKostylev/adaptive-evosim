@@ -13,7 +13,7 @@
  */
 
 import {
-  listExperiments, getGenerations, continueSimulation, archiveExperiment, setRunHidden,
+  listExperiments, getGenerations, continueSimulation, archiveExperiment, setRunHidden, deleteExperiment,
   exportUrl, bestGenomeUrl, ApiError,
 } from '../api.js';
 import { connect } from '../ws.js';
@@ -203,6 +203,9 @@ function renderActions() {
         : 'у прогоні немає чекпоінта');
   $('#an-archive').disabled = !(r.location === 'runs' && !r.archived && r.state === 'STOPPED');
   $('#an-hide').textContent = r.hidden ? 'Показати' : 'Приховати';
+  $('#an-delete').disabled = !(r.location === 'runs' && !r.archived && r.state === 'STOPPED');
+  $('#an-delete').title = r.archived ? 'прогін в архіві (git) — кнопкою не видаляється'
+    : 'видалити зупинений прогін з experiments/runs/ (метрики й чекпоінти)';
 }
 
 function syncPng() {
@@ -224,6 +227,20 @@ async function onContinue() {
   try {
     await continueSimulation(r.run_id, generations);
     message(`прогін продовжено до покоління ${generations}; хід видно на вкладці «Симуляція» й тут`, 'ok');
+  } catch (e) {
+    message(e instanceof ApiError ? e.message : String(e), 'err');
+  }
+  await refreshRuns();
+}
+
+async function onDelete() {
+  const r = current();
+  const ok = window.confirm(`Видалити прогін ${r.run_id}?\n\nКаталог experiments/runs/${r.run_id} `
+    + 'зникне разом з метриками й чекпоінтами. Відмінити це не можна.');
+  if (!ok) return;
+  try {
+    await deleteExperiment(r.run_id);
+    message(`прогін ${r.run_id} видалено`, 'ok');
   } catch (e) {
     message(e instanceof ApiError ? e.message : String(e), 'err');
   }
@@ -424,6 +441,7 @@ export async function initAnalytics({ theme }) {
   $('#an-continue').addEventListener('click', onContinue);
   $('#an-archive').addEventListener('click', onArchive);
   $('#an-hide').addEventListener('click', onHide);
+  $('#an-delete').addEventListener('click', onDelete);
   for (const btn of document.querySelectorAll('#an-filter button')) {
     btn.addEventListener('click', async () => {
       filter = btn.dataset.filter;

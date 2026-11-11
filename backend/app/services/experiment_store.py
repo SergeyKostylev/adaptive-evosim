@@ -355,7 +355,23 @@ def set_hidden(run_id: str, hidden: bool) -> bool:
     """Сховати / повернути прогін. Прогін мусить існувати (`RunNotFound`)."""
     RunStore.open(run_id)
     runs = hidden_runs()
-    runs = runs | {run_id} if hidden else runs - {run_id}
+    set_hidden_list(runs | {run_id} if hidden else runs - {run_id})
+    return hidden
+
+
+def set_hidden_list(runs: set[str]) -> None:
     C.DATA_DIR.mkdir(parents=True, exist_ok=True)
     _atomic_write(_hidden_path(), json.dumps({"hidden": sorted(runs)}, ensure_ascii=False, indent=2))
-    return hidden
+
+
+def delete_run(run_id: str) -> None:
+    """Видалити неархівований прогін із `runs/` цілком (§11).
+
+    Архівний — `ValueError`: архів у git, кнопкою його не видаляють.
+    """
+    store = RunStore.open(run_id, archive=False)
+    if (archive_path(run_id) / "config.json").exists():
+        raise ValueError(f"прогін {run_id} уже в архіві (git) — видалення локальної копії його не прибере")
+    shutil.rmtree(store.path)
+    if run_id in hidden_runs():
+        set_hidden_list(hidden_runs() - {run_id})

@@ -85,6 +85,10 @@ export const listExperiments = () => request('/experiments');
 export const archiveExperiment = (runId) =>
   request(`/experiments/${encodeURIComponent(runId)}/archive`, { method: 'POST' });
 
+/** DELETE /api/experiments/{run_id} → {deleted} — лише зупинений і неархівований прогін */
+export const deleteExperiment = (runId) =>
+  request(`/experiments/${encodeURIComponent(runId)}`, { method: 'DELETE' });
+
 /** PUT /api/experiments/{run_id}/hidden {hidden} → {run_id, hidden} — лише перегляд, прогін не змінюється */
 export const setRunHidden = (runId, hidden) =>
   request(`/experiments/${encodeURIComponent(runId)}/hidden`, { method: 'PUT', body: { hidden } });

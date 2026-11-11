@@ -25,6 +25,7 @@ from .core.world import World
 from .schemas import (
     ArchiveResponse,
     ContinueRequest,
+    DeleteResponse,
     HiddenRequest,
     HiddenResponse,
     CreatureConfig,
@@ -269,6 +270,18 @@ async def experiments_list() -> RunList:
         runs.append(RunSummary(**summary, state=_run_state(summary),
                                hidden=summary["run_id"] in hidden))
     return RunList(runs=runs)
+
+
+@app.delete("/api/experiments/{run_id}", response_model=DeleteResponse)
+async def experiments_delete(run_id: str) -> DeleteResponse:
+    """Видалити випадковий прогін із `runs/`; архівний і поточний — `409` (§11)."""
+    try:
+        await asyncio.to_thread(sim.delete_run, run_id)
+    except RunNotFound as exc:
+        raise StarletteHTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    except SimulationConflict as exc:
+        raise _conflict(exc)
+    return DeleteResponse(deleted=run_id)
 
 
 @app.put("/api/experiments/{run_id}/hidden", response_model=HiddenResponse)

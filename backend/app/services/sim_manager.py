@@ -26,7 +26,7 @@ from .. import config as C
 from ..evolution.evaluator import EvaluationCancelled, Evaluator
 from ..evolution.ga import GeneticAlgorithm, resume, run_loop
 from ..schemas import ExperimentConfig
-from .experiment_store import RunStore
+from .experiment_store import RunStore, delete_run
 
 log = logging.getLogger(__name__)
 
@@ -150,6 +150,28 @@ class SimulationManager:
             raise SimulationConflict(f"прогін {run_id} ще виконується — архів робиться після зупинки")
         store = RunStore.open(run_id, archive=False)
         return str(store.archive().relative_to(C.DATA_DIR))
+
+    def delete_run(self, run_id: str) -> None:
+        """Видалити зупинений неархівований прогін (§11); останній прогін
+        менеджера при цьому забувається, щоб UI не показував видалене."""
+        with self._lock:
+            if run_id == self.run_id and self.busy:
+                raise SimulationConflict(f"прогін {run_id} ще виконується — спершу зупиніть його")
+            try:
+                delete_run(run_id)
+            except ValueError as exc:
+                raise SimulationConflict(str(exc)) from exc
+            if run_id == self.run_id:
+                self.run_id = None
+                self.generation = 0
+                self.generations_total = 0
+                self.population = 0
+                self.error = None
+                self.archived = None
+                self.cfg = None
+                self.latest_best = None
+                self._started_at = 0.0
+                self._publish(self.state_packet())
 
     def _launch(self, cfg: ExperimentConfig, store: RunStore, ga: GeneticAlgorithm,
                 workers: int | None, extended: bool) -> None:

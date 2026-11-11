@@ -12,7 +12,7 @@
 
 import {
   startSimulation, pauseSimulation, resumeSimulation, stopSimulation,
-  getStatus, getGenerations, ApiError,
+  deleteExperiment, getStatus, getGenerations, ApiError,
 } from '../api.js';
 import { connect } from '../ws.js';
 
@@ -21,7 +21,7 @@ const $ = (s) => document.querySelector(s);
 const STATE_LABELS = { RUNNING: 'виконується', PAUSED: 'пауза', STOPPED: 'зупинено' };
 
 /** Поточний прогін: стан сервера + історія поколінь для лінії. */
-const run = { state: 'STOPPED', runId: null, generation: 0, total: 0, rows: [] };
+const run = { state: 'STOPPED', runId: null, generation: 0, total: 0, rows: [], archived: null };
 let colors = null;
 let onRunChange = null;
 
@@ -32,6 +32,8 @@ function syncButtons() {
   $('#sim-pause').disabled = s !== 'RUNNING';
   $('#sim-resume').disabled = s !== 'PAUSED';
   $('#sim-stop').disabled = s === 'STOPPED';
+  // Видалити можна лише прогін, якого немає в архіві (архів — у git, §11)
+  $('#sim-cancel').disabled = !run.runId || Boolean(run.archived);
 }
 
 function message(text, cls = 'muted') {
@@ -52,10 +54,39 @@ async function control(action, busyText) {
   }
 }
 
+/** Випадковий прогін: зупинити, якщо йде, і видалити з experiments/runs/ (§11). */
+async function cancelRun() {
+  const id = run.runId;
+  if (!id) return;
+  const ok = window.confirm(`Скасувати прогін ${id}?\n\nЙого буде зупинено й видалено з experiments/runs/ `
+    + 'разом з метриками й чекпоінтами. Відмінити це не можна.');
+  if (!ok) return;
+  if (run.state !== 'STOPPED') {
+    if (!(await control(stopSimulation, 'зупинка…'))) return;
+  }
+  message('видалення…');
+  try {
+    await deleteExperiment(id);
+    message(`прогін ${id} скасовано й видалено`, 'ok');
+  } catch (e) {
+    message(e instanceof ApiError ? e.message : String(e), 'err');
+  }
+}
+
 // --- Стан прогону --------------------------------------------------------------
 async function applyState(packet) {
   const changedRun = packet.run_id && packet.run_id !== run.runId;
+  const forgotten = packet.run_id === null && run.runId !== null;   // прогін видалено
   run.state = packet.state ?? run.state;
+  if ('archived' in packet) run.archived = packet.archived;
+  if (forgotten) {
+    run.runId = null;
+    run.rows = [];
+    run.generation = 0;
+    run.total = 0;
+    drawChart();
+    showLast();
+  }
   if (packet.generation != null) run.generation = packet.generation;
   if (packet.generations_total != null) run.total = packet.generations_total;
   if (changedRun) {
@@ -68,6 +99,7 @@ async function applyState(packet) {
   $('#st-run').textContent = run.runId ?? '—';
   $('#st-gen').textContent = run.generation;
   showProgress();
+  if (forgotten) return onRunChange?.({ ...run });
   if (packet.error) message(`прогін зупинився з помилкою: ${packet.error}`, 'err');
   else if (run.state === 'RUNNING') message('навчання триває; пауза настає між поколіннями');
   else if (run.state === 'PAUSED') message('пауза: поточне покоління дооцінене й записане');
@@ -202,6 +234,7 @@ export async function initTraining({ theme, getRun, onChange }) {
   $('#sim-pause').addEventListener('click', () => control(pauseSimulation, 'пауза настане після поточного покоління…'));
   $('#sim-resume').addEventListener('click', () => control(resumeSimulation, 'продовження…'));
   $('#sim-stop').addEventListener('click', () => control(stopSimulation, 'зупинка…'));
+  $('#sim-cancel').addEventListener('click', cancelRun);
 
   // Канал подій живе весь час: прогін міг стартувати з іншої вкладки браузера
   connect('/ws/metrics', {

@@ -167,3 +167,33 @@ def test_broken_hidden_file_hides_nothing(client, demo_creature):
     run_id = finished_run(client, demo_creature)
     (C.DATA_DIR / C.HIDDEN_RUNS_FILE).write_text("{обірвано")
     assert runs(client)[run_id]["hidden"] is False
+
+
+def test_delete_an_accidental_run(client, demo_creature):
+    run_id = client.post("/api/simulation/start",
+                         json=experiment(demo_creature, generations=500)).json()["run_id"]
+    deadline = time.monotonic() + 30
+    while client.get("/api/simulation/status").json()["generation"] < 1:
+        assert time.monotonic() < deadline
+        time.sleep(0.05)
+    assert client.delete(f"/api/experiments/{run_id}").status_code == 409     # ще виконується
+    client.post("/api/simulation/stop")
+    client.put(f"/api/experiments/{run_id}/hidden", json={"hidden": True})
+
+    with client.websocket_connect("/ws/metrics") as ws:
+        assert ws.receive_json()["run_id"] == run_id
+        r = client.delete(f"/api/experiments/{run_id}")
+        assert r.status_code == 200 and r.json() == {"deleted": run_id}
+        assert ws.receive_json()["run_id"] is None                          # UI забуває прогін
+    assert not (C.DATA_DIR / C.RUNS_SUBDIR / run_id).exists()
+    assert run_id not in runs(client)
+    assert client.get("/api/simulation/status").json()["run_id"] is None
+    assert run_id not in (C.DATA_DIR / C.HIDDEN_RUNS_FILE).read_text()
+    assert client.delete(f"/api/experiments/{run_id}").status_code == 404
+
+
+def test_archived_run_cannot_be_deleted(client, demo_creature):
+    run_id = finished_run(client, demo_creature)
+    r = client.delete(f"/api/experiments/{run_id}")
+    assert r.status_code == 409 and "архів" in r.json()["error"]["message"]
+    assert (C.DATA_DIR / C.RUNS_SUBDIR / run_id).exists()
