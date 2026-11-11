@@ -13,7 +13,7 @@
  */
 
 import {
-  listExperiments, getGenerations, continueSimulation, archiveExperiment,
+  listExperiments, getGenerations, continueSimulation, archiveExperiment, setRunHidden,
   exportUrl, bestGenomeUrl, ApiError,
 } from '../api.js';
 import { connect } from '../ws.js';
@@ -43,6 +43,37 @@ let rows = [];
 const charts = {};
 let busy = false;             // менеджер зараз веде якийсь прогін
 
+/** Фільтр списку: 'visible' | 'hidden' | 'all'; запам'ятовується лише в цьому браузері. */
+const FILTER_KEY = 'evosim.analytics.filter';
+const FILTERS = { visible: 'Не приховані', hidden: 'Приховані', all: 'Усі' };
+let filter = 'visible';
+try {
+  const saved = localStorage.getItem(FILTER_KEY);
+  if (saved in FILTERS) filter = saved;
+} catch { /* приватне вікно / заблоковане сховище — типовий фільтр */ }
+
+function shown() {
+  if (filter === 'all') return runs;
+  return runs.filter((r) => r.hidden === (filter === 'hidden'));
+}
+
+/** Вибраний прогін має бути у видимому списку; інакше — перший (поточний, якщо він там). */
+async function ensureSelection() {
+  const list = shown();
+  if (list.some((r) => r.run_id === selected)) return;
+  selected = (list.find((r) => r.state === 'RUNNING' || r.state === 'PAUSED') ?? list[0])?.run_id ?? null;
+  await loadRows();
+}
+
+function renderFilter() {
+  for (const btn of document.querySelectorAll('#an-filter button')) {
+    const f = btn.dataset.filter;
+    const n = f === 'all' ? runs.length : runs.filter((r) => r.hidden === (f === 'hidden')).length;
+    btn.textContent = `${FILTERS[f]} (${n})`;
+    btn.classList.toggle('active', f === filter);
+  }
+}
+
 // --- Таблиця прогонів -------------------------------------------------------------
 function message(text, cls = 'muted') {
   const el = $('#an-msg');
@@ -62,10 +93,8 @@ async function refreshRuns() {
     return;
   }
   busy = runs.some((r) => r.state === 'RUNNING' || r.state === 'PAUSED');
-  if (!runs.some((r) => r.run_id === selected)) {
-    selected = (runs.find((r) => r.state === 'RUNNING' || r.state === 'PAUSED') ?? runs[0])?.run_id ?? null;
-    await loadRows();
-  }
+  await ensureSelection();
+  renderFilter();
   renderRuns();
   renderActions();
 }
@@ -80,16 +109,18 @@ function fmtDate(iso) {
 function renderRuns() {
   const box = $('#an-runs');
   box.innerHTML = '';
-  if (!runs.length) {
+  const list = shown();
+  if (!list.length) {
     const p = document.createElement('p');
     p.className = 'small muted';
-    p.textContent = 'прогонів ще немає — запустіть навчання на вкладці «Симуляція»';
+    p.textContent = !runs.length ? 'прогонів ще немає — запустіть навчання на вкладці «Симуляція»'
+      : filter === 'hidden' ? 'прихованих прогонів немає' : 'усі прогони приховані — див. фільтр «Приховані»';
     box.append(p);
     return;
   }
-  for (const r of runs) {
+  for (const r of list) {
     const item = document.createElement('button');
-    item.className = `run-item${r.run_id === selected ? ' selected' : ''}`;
+    item.className = `run-item${r.run_id === selected ? ' selected' : ''}${r.hidden ? ' is-hidden' : ''}`;
     item.title = r.run_id;
     const name = document.createElement('span');
     name.className = 'name';
@@ -101,7 +132,7 @@ function renderRuns() {
     meta.className = 'meta';
     const best = r.best_fitness == null ? '—' : r.best_fitness.toFixed(3);
     meta.textContent = `${fmtDate(r.created_at)} · пок. ${r.generations_done}/${r.generations_total}`
-      + ` · F ${best}${r.archived ? ' · в архіві' : ''}`;
+      + ` · F ${best}${r.archived ? ' · в архіві' : ''}${r.hidden ? ' · приховано' : ''}`;
     item.append(name, state, meta);
     item.addEventListener('click', async () => {
       if (selected === r.run_id) return;
@@ -171,6 +202,7 @@ function renderActions() {
       : r.location !== 'runs' ? 'в архіві чекпоінтів немає — продовжувати нема з чого'
         : 'у прогоні немає чекпоінта');
   $('#an-archive').disabled = !(r.location === 'runs' && !r.archived && r.state === 'STOPPED');
+  $('#an-hide').textContent = r.hidden ? 'Показати' : 'Приховати';
 }
 
 function syncPng() {
@@ -192,6 +224,17 @@ async function onContinue() {
   try {
     await continueSimulation(r.run_id, generations);
     message(`прогін продовжено до покоління ${generations}; хід видно на вкладці «Симуляція» й тут`, 'ok');
+  } catch (e) {
+    message(e instanceof ApiError ? e.message : String(e), 'err');
+  }
+  await refreshRuns();
+}
+
+async function onHide() {
+  const r = current();
+  try {
+    await setRunHidden(r.run_id, !r.hidden);
+    message(r.hidden ? `прогін ${r.name} знову в списку` : `прогін ${r.name} приховано — його видно у фільтрі «Приховані»`, 'ok');
   } catch (e) {
     message(e instanceof ApiError ? e.message : String(e), 'err');
   }
@@ -380,6 +423,17 @@ export async function initAnalytics({ theme }) {
   $('#an-refresh').addEventListener('click', refreshRuns);
   $('#an-continue').addEventListener('click', onContinue);
   $('#an-archive').addEventListener('click', onArchive);
+  $('#an-hide').addEventListener('click', onHide);
+  for (const btn of document.querySelectorAll('#an-filter button')) {
+    btn.addEventListener('click', async () => {
+      filter = btn.dataset.filter;
+      try { localStorage.setItem(FILTER_KEY, filter); } catch { /* лише зручність */ }
+      renderFilter();
+      await ensureSelection();
+      renderRuns();
+      renderActions();
+    });
+  }
   $('#an-png-chart').addEventListener('change', syncPng);
 
   let refreshTimer = null;

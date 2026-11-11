@@ -553,10 +553,25 @@ class RunSummary(BaseModel):
     last_checkpoint: int | None = None
     location: Literal["runs", "archive"]
     fitness_weights: FitnessWeights
+    #: Приховано зі списку «Аналітики» (лише перегляд, §9.4)
+    hidden: bool = False
 
 
 class RunList(BaseModel):
     runs: list[RunSummary] = Field(default_factory=list)
+
+
+class HiddenRequest(BaseModel):
+    """`PUT /api/experiments/{run_id}/hidden` (§9.4)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    hidden: bool
+
+
+class HiddenResponse(BaseModel):
+    run_id: str
+    hidden: bool
 
 
 class ArchiveResponse(BaseModel):

@@ -85,6 +85,10 @@ export const listExperiments = () => request('/experiments');
 export const archiveExperiment = (runId) =>
   request(`/experiments/${encodeURIComponent(runId)}/archive`, { method: 'POST' });
 
+/** PUT /api/experiments/{run_id}/hidden {hidden} → {run_id, hidden} — лише перегляд, прогін не змінюється */
+export const setRunHidden = (runId, hidden) =>
+  request(`/experiments/${encodeURIComponent(runId)}/hidden`, { method: 'PUT', body: { hidden } });
+
 /** URL файлу експорту: CSV метрик, PDF усіх графіків або PNG одного */
 export const exportUrl = (runId, format, chart) =>
   `${BASE}/experiments/${encodeURIComponent(runId)}/export?format=${format}${chart ? `&chart=${chart}` : ''}`;

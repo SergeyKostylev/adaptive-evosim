@@ -468,6 +468,11 @@
     <aside class="sidebar" style="width:420px">
       <div class="group">
         <h3>Прогони</h3>
+        <div class="seg" id="an-filter" role="group" aria-label="Які прогони показувати">
+          <button data-filter="visible" title="усі, крім прихованих">Не приховані</button>
+          <button data-filter="hidden" title="лише приховані">Приховані</button>
+          <button data-filter="all" title="усі прогони">Усі</button>
+        </div>
         <div class="btns" style="margin-bottom:6px">
           <button id="an-refresh" title="Перечитати GET /api/experiments">Оновити список</button>
         </div>
@@ -503,6 +508,7 @@
           <button id="an-continue" title="POST /api/simulation/continue — з останнього чекпоінта, той самий run_id">Продовжити</button>
         </div>
         <div class="btns" style="margin-top:6px">
+          <button id="an-hide" title="PUT /api/experiments/{run_id}/hidden — лише прибирає зі списку; прогін і архів не змінюються">Приховати</button>
           <button id="an-archive" title="POST /api/experiments/{run_id}/archive — скопіювати зупинений прогін в архів (git)">В архів</button>
         </div>
         <div class="small muted" id="an-msg" style="margin-top:6px"></div>

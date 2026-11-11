@@ -277,6 +277,11 @@ a.button.disabled { opacity: .45; pointer-events: none; }
 #an-gens { flex: 0 0 90px; }
 #an-continue { flex: 1 1 auto; }
 
+.seg { display: flex; margin-bottom: 6px; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+.seg > button { flex: 1; border: 0; border-radius: 0; font-size: 12px; padding: 5px 6px; }
+.seg > button + button { border-left: 1px solid var(--border); }
+.seg > button.active { background: var(--bg); color: var(--accent); }
+.run-item.is-hidden .name { color: var(--muted); }
 .runs { display: flex; flex-direction: column; gap: 4px; max-height: 46vh; overflow-y: auto; }
 .run-item {
   display: grid; grid-template-columns: 1fr auto; gap: 1px 8px; text-align: left;

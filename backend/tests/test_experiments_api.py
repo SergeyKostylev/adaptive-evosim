@@ -143,3 +143,27 @@ def test_stopped_run_can_be_archived_by_hand(client, demo_creature):
     assert r.status_code == 200 and r.json()["archived"] == f"{C.ARCHIVE_SUBDIR}/{run_id}"
     assert runs(client)[run_id]["archived"] is True
     assert client.post("/api/experiments/nope__20260101-0000/archive").status_code == 404
+
+
+def test_hide_and_unhide_a_run(client, demo_creature):
+    run_id = finished_run(client, demo_creature)
+    assert runs(client)[run_id]["hidden"] is False
+
+    r = client.put(f"/api/experiments/{run_id}/hidden", json={"hidden": True})
+    assert r.status_code == 200 and r.json() == {"run_id": run_id, "hidden": True}
+    assert runs(client)[run_id]["hidden"] is True
+    # Прогін не змінено: метрики й архів на місці
+    assert (C.DATA_DIR / C.RUNS_SUBDIR / run_id / "metrics.csv").exists()
+    assert (C.DATA_DIR / C.ARCHIVE_SUBDIR / run_id).exists()
+
+    client.put(f"/api/experiments/{run_id}/hidden", json={"hidden": False})
+    assert runs(client)[run_id]["hidden"] is False
+    assert client.put("/api/experiments/nope__20260101-0000/hidden",
+                      json={"hidden": True}).status_code == 404
+    assert client.put(f"/api/experiments/{run_id}/hidden", json={}).status_code == 422
+
+
+def test_broken_hidden_file_hides_nothing(client, demo_creature):
+    run_id = finished_run(client, demo_creature)
+    (C.DATA_DIR / C.HIDDEN_RUNS_FILE).write_text("{обірвано")
+    assert runs(client)[run_id]["hidden"] is False

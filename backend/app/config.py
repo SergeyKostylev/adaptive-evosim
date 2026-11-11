@@ -146,6 +146,8 @@ DATA_DIR: Path = Path(os.getenv("EVOSIM_DATA_DIR", "experiments")).resolve()
 RUNS_SUBDIR: str = "runs"
 #: Завершені прогони (усі покоління, без помилки) копіюються сюди — і в git (§11)
 ARCHIVE_SUBDIR: str = "archive"
+#: Прогони, приховані зі списку «Аналітики» — налаштування перегляду, поза git (§9.4)
+HIDDEN_RUNS_FILE: str = "hidden_runs.json"
 #: Що з прогону йде в архів: легке й незамінне; чекпоінти й графіки — ні
 ARCHIVE_FILES: tuple[str, ...] = ("config.json", "metrics.csv", "timing.csv", "best_genome.json")
 EDITOR_SUBDIR: str = "editor"       # стан конструктора між сеансами

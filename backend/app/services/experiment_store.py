@@ -335,3 +335,27 @@ def list_runs() -> list[RunStore]:
             if RUN_ID_RE.match(path.name) and (path / "config.json").exists():
                 found[path.name] = RunStore(path, location)    # runs/ перекриває архів
     return sorted(found.values(), key=lambda st: st.run_id.split("__")[-1], reverse=True)
+
+
+# --- Приховані прогони (§9.4) ----------------------------------------------------
+def _hidden_path() -> Path:
+    return C.DATA_DIR / C.HIDDEN_RUNS_FILE
+
+
+def hidden_runs() -> set[str]:
+    """Прогони, приховані зі списку; пошкоджений файл — нічого не приховано."""
+    try:
+        data = json.loads(_hidden_path().read_text(encoding="utf-8"))
+        return {r for r in data.get("hidden", []) if isinstance(r, str)}
+    except (OSError, ValueError, AttributeError):
+        return set()
+
+
+def set_hidden(run_id: str, hidden: bool) -> bool:
+    """Сховати / повернути прогін. Прогін мусить існувати (`RunNotFound`)."""
+    RunStore.open(run_id)
+    runs = hidden_runs()
+    runs = runs | {run_id} if hidden else runs - {run_id}
+    C.DATA_DIR.mkdir(parents=True, exist_ok=True)
+    _atomic_write(_hidden_path(), json.dumps({"hidden": sorted(runs)}, ensure_ascii=False, indent=2))
+    return hidden

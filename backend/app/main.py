@@ -25,6 +25,8 @@ from .core.world import World
 from .schemas import (
     ArchiveResponse,
     ContinueRequest,
+    HiddenRequest,
+    HiddenResponse,
     CreatureConfig,
     CreatureList,
     CreatureMeta,
@@ -55,7 +57,7 @@ from .schemas import (
 from .evolution import genome as genome_ops
 from .services import editor_store, live_stream
 from .export import csv_export, plots
-from .services.experiment_store import RunNotFound, RunStore, list_runs
+from .services.experiment_store import RunNotFound, RunStore, hidden_runs, list_runs, set_hidden
 from .services.sim_manager import SimulationConflict
 from .services.sim_manager import manager as sim
 
@@ -261,10 +263,22 @@ def _run_state(summary: dict) -> str:
 @app.get("/api/experiments", response_model=RunList)
 async def experiments_list() -> RunList:
     runs = []
+    hidden = await asyncio.to_thread(hidden_runs)
     for store in await asyncio.to_thread(list_runs):
         summary = await asyncio.to_thread(store.summary)
-        runs.append(RunSummary(**summary, state=_run_state(summary)))
+        runs.append(RunSummary(**summary, state=_run_state(summary),
+                               hidden=summary["run_id"] in hidden))
     return RunList(runs=runs)
+
+
+@app.put("/api/experiments/{run_id}/hidden", response_model=HiddenResponse)
+async def experiments_hidden(run_id: str, payload: HiddenRequest) -> HiddenResponse:
+    """Сховати прогін зі списку «Аналітики» чи повернути; сам прогін не змінюється."""
+    try:
+        hidden = await asyncio.to_thread(set_hidden, run_id, payload.hidden)
+    except RunNotFound as exc:
+        raise StarletteHTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc))
+    return HiddenResponse(run_id=run_id, hidden=hidden)
 
 
 EXPORT_TYPES = {"csv": "text/csv; charset=utf-8", "pdf": "application/pdf", "png": "image/png"}
