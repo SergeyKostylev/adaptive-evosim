@@ -11,6 +11,8 @@ import {
 import { initEditor } from './editor/editor.js';
 import { initSimulationPicker, refreshExperimentPreview } from './simulation.js';
 import { initCollapsibles } from './collapsible.js';
+import { initAnalytics } from './hud/charts.js';
+import { themeColors } from './render/shapes.js';
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -95,6 +97,16 @@ function initTabs() {
 }
 
 // --- Індикатор стану сервера ----------------------------------------------
+/** `elapsed_s` → «1 год 05 хв» / «3 хв 20 с» / «42 с». */
+function formatElapsed(sec) {
+  if (!sec) return '—';
+  const s = Math.round(sec);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  if (h) return `${h} год ${String(m).padStart(2, '0')} хв`;
+  return m ? `${m} хв ${String(s % 60).padStart(2, '0')} с` : `${s} с`;
+}
+
 async function pollStatus() {
   const badge = $('#api-badge');
   try {
@@ -105,6 +117,7 @@ async function pollStatus() {
     $('#st-run').textContent = s.run_id ?? '—';
     $('#st-gen').textContent = s.generation;
     $('#st-mode').textContent = MODE_LABELS[s.mode] ?? s.mode;
+    $('#st-elapsed').textContent = formatElapsed(s.elapsed_s);
   } catch (e) {
     badge.textContent = e instanceof ApiError && e.code === 'NETWORK_ERROR'
       ? 'Сервер: недоступний' : 'Сервер: помилка';
@@ -165,6 +178,8 @@ async function bootstrap() {
   refreshExperimentJson();
   [...document.querySelectorAll('#tab-simulation input')]
     .forEach((i) => i.addEventListener('change', () => { stateChanged(); refreshExperimentPreview(); }));
+  // Слухач `tabchange` аналітики реєструється синхронно — до activateTab нижче
+  initAnalytics({ theme: themeColors() }).catch((e) => showFatal('аналітика', e));
   initSimulationPicker()
     .then(() => { if (fromUrl.tab && fromUrl.tab !== 'editor') activateTab(fromUrl.tab); })
     .catch((e) => showFatal('симуляція', e));

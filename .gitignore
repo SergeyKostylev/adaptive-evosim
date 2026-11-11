@@ -28,3 +28,6 @@ experiments/archive/**/*.tmp
 #   .tmp-*            — проміжні файли атомарного запису (tmp + os.replace).
 experiments/editor/last_session.json
 experiments/editor/**/.tmp-*
+
+# Заміна копії в архіві при подовженні прогону (§11): стара відсувається на мить
+experiments/archive/.*.old/

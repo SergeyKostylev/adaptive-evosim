@@ -295,6 +295,7 @@ class RunStore:
             "archived": (archive_root() / self.run_id / "config.json").exists(),
             "last_checkpoint": gens[-1] if gens else None,
             "location": self.location,
+            "fitness_weights": cfg.get("fitness_weights", {}),
         }
 
     def read_generations(self, from_gen: int = 0) -> list[dict]:

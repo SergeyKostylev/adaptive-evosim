@@ -264,3 +264,43 @@ details summary::-webkit-details-marker { color: var(--muted); }
 /* Позначка «є зміни, не збережені в бібліотеці» для сутності, що редагується */
 .dirty { color: var(--warn); }
 .saved { color: var(--muted); }
+
+/* --- Аналітика (§10.2) --- */
+a.button {
+  display: inline-block; text-align: center; text-decoration: none; flex: 1 1 auto;
+  background: var(--panel-2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; font: 13px var(--sans);
+}
+a.button:hover { border-color: var(--accent); color: var(--accent); }
+a.button.disabled { opacity: .45; pointer-events: none; }
+.btns > select { flex: 1 1 40%; width: auto; }
+#an-gens { flex: 0 0 90px; }
+#an-continue { flex: 1 1 auto; }
+
+.runs { display: flex; flex-direction: column; gap: 4px; max-height: 46vh; overflow-y: auto; }
+.run-item {
+  display: grid; grid-template-columns: 1fr auto; gap: 1px 8px; text-align: left;
+  padding: 6px 8px; font: 12px var(--mono); background: var(--bg);
+}
+.run-item.selected { border-color: var(--accent); }
+.run-item .name { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.run-item .meta { color: var(--muted); grid-column: 1 / -1; }
+.run-item .state { color: var(--muted); }
+.run-item .state.RUNNING { color: var(--accent); }
+.run-item .state.PAUSED { color: var(--warn); }
+.run-item .state.COMPLETED { color: var(--accent-2); }
+
+.charts {
+  flex: 1; min-width: 0; overflow-y: auto; padding: 12px;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+  grid-auto-rows: minmax(260px, 1fr); gap: 12px; align-content: start;
+}
+.chart-card {
+  display: flex; flex-direction: column; min-height: 0;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 10px;
+}
+.chart-card > h3 { margin: 0 0 6px; font-size: 13px; font-weight: 600; color: var(--text); }
+.chart-box { position: relative; flex: 1; min-height: 200px; }
+/* `display:flex` перекриває атрибут hidden — без цього лишається графік попереднього прогону */
+.chart-card[hidden] { display: none; }
+#an-empty { grid-column: 1 / -1; }

@@ -70,6 +70,28 @@ export const resumeSimulation = () => request('/simulation/resume', { method: 'P
 /** POST /api/simulation/stop → {state:'STOPPED', run_id} */
 export const stopSimulation = () => request('/simulation/stop', { method: 'POST' });
 
+/**
+ * POST /api/simulation/continue {run_id, generations?} → {run_id, state} — продовжити
+ * прогін з останнього чекпоінта (§11); `generations` подовжує прогін
+ */
+export const continueSimulation = (runId, generations) =>
+  request('/simulation/continue', { method: 'POST', body: { run_id: runId, generations } });
+
+// --- Прогони й експорт (§9.4, §11) ------------------------------------------
+/** GET /api/experiments → {runs:[RunSummary]}, новіші першими */
+export const listExperiments = () => request('/experiments');
+
+/** POST /api/experiments/{run_id}/archive → {archived} — ручне архівування зупиненого */
+export const archiveExperiment = (runId) =>
+  request(`/experiments/${encodeURIComponent(runId)}/archive`, { method: 'POST' });
+
+/** URL файлу експорту: CSV метрик, PDF усіх графіків або PNG одного */
+export const exportUrl = (runId, format, chart) =>
+  `${BASE}/experiments/${encodeURIComponent(runId)}/export?format=${format}${chart ? `&chart=${chart}` : ''}`;
+
+/** URL найкращого геному прогону (GenomeJSON) — для завантаження файлом */
+export const bestGenomeUrl = (runId) => `${BASE}/genome/best?run_id=${encodeURIComponent(runId)}`;
+
 /** GET /api/metrics/generations → {run_id, rows:[GenerationStats]} (§9.6) */
 export const getGenerations = (runId, fromGen = 0) =>
   request(`/metrics/generations?run_id=${encodeURIComponent(runId)}&from_gen=${fromGen}`);

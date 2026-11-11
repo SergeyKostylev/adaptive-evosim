@@ -48,6 +48,7 @@ def test_list_reports_finished_run(client, demo_creature):
     assert run["generations_done"] == run["generations_total"] == 3
     assert run["archived"] is True and run["last_checkpoint"] == 3
     assert run["name"] == "api-test" and run["created_at"].startswith("20")
+    assert run["fitness_weights"]["survival"] == C.W_SURVIVAL
     rows = client.get("/api/metrics/generations", params={"run_id": run_id}).json()["rows"]
     best = max(rows, key=lambda r: r["best_fitness"])
     assert run["best_fitness"] == best["best_fitness"]

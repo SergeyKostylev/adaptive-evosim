@@ -552,6 +552,7 @@ class RunSummary(BaseModel):
     archived: bool
     last_checkpoint: int | None = None
     location: Literal["runs", "archive"]
+    fitness_weights: FitnessWeights
 
 
 class RunList(BaseModel):

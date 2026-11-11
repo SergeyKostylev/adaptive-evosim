@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Adaptive EvoSim</title>
 <link rel="stylesheet" href="css/theme.css">
+<!-- Chart.js — точна версія з cdnjs (§10.1); без нього графіки аналітики показують підказку -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 </head>
 <body>
 <div id="js-error" hidden></div>
@@ -410,6 +412,7 @@
           <span>прогін</span><span id="st-run">—</span>
           <span>покоління</span><span id="st-gen">—</span>
           <span>режим</span><span id="st-mode">—</span>
+          <span title="elapsed_s — час навчання без пауз">час навчання</span><span id="st-elapsed">—</span>
         </div>
         <div class="progress" id="st-progress" hidden title="generation / ga.generations; час — за середнім eval_seconds останніх 10 поколінь">
           <div class="bar"><i id="st-progress-bar"></i></div>
@@ -462,12 +465,55 @@
 
   <!-- ================= АНАЛІТИКА ================= -->
   <section class="tab" id="tab-analytics">
-    <div class="placeholder">
-      <h2>Аналітика</h2>
-      <p>Графіки найкращого та середнього фітнесу, різноманіття популяції й покомпонентного
-         розкладу з'являються на етапі 5 (джерело даних — канал
-         <span class="mono">/ws/metrics</span> та
-         <span class="mono">GET /api/metrics/generations</span>).</p>
+    <aside class="sidebar" style="width:420px">
+      <div class="group">
+        <h3>Прогони</h3>
+        <div class="btns" style="margin-bottom:6px">
+          <button id="an-refresh" title="Перечитати GET /api/experiments">Оновити список</button>
+        </div>
+        <div class="runs" id="an-runs"><p class="small muted">завантаження…</p></div>
+        <p class="small muted" style="margin:6px 0 0">Тут і локальні прогони
+          (<span class="mono">experiments/runs/</span>), і ті, що є лише в архіві
+          (<span class="mono">experiments/archive/</span>, у git).</p>
+      </div>
+      <div class="group" id="an-actions" hidden>
+        <h3>Вибраний прогін</h3>
+        <div class="kv" id="an-kv"></div>
+        <h3 style="margin-top:10px">Експорт для дипломної</h3>
+        <div class="btns">
+          <a class="button" id="an-csv" download title="metrics.csv + час оцінки (§11)">CSV метрик</a>
+          <a class="button" id="an-pdf" download title="усі графіки, по сторінці на графік; друкований стиль">PDF графіків</a>
+          <a class="button" id="an-genome" download title="best_genome.json — рекорд прогону (GenomeJSON, §6.1)">Найкращий геном</a>
+        </div>
+        <div class="btns" style="margin-top:6px">
+          <select id="an-png-chart" title="PNG одного графіка, dpi 200">
+            <option value="fitness">фітнес</option>
+            <option value="diversity">різноманіття</option>
+            <option value="components">компоненти F</option>
+            <option value="caught">спіймані</option>
+          </select>
+          <a class="button" id="an-png" download>PNG графіка</a>
+        </div>
+        <p class="small muted" style="margin:6px 0 0">Копії графіків (PNG і PDF) також лягають у
+          <span class="mono">figures/</span> прогону.</p>
+        <h3 style="margin-top:10px">Продовження</h3>
+        <div class="row" style="gap:6px; align-items:center">
+          <label class="small muted" for="an-gens" title="generations: до якого покоління вести прогін">до покоління</label>
+          <input type="number" id="an-gens" min="1" max="100000" step="1" style="width:90px">
+          <button id="an-continue" title="POST /api/simulation/continue — з останнього чекпоінта, той самий run_id">Продовжити</button>
+        </div>
+        <div class="btns" style="margin-top:6px">
+          <button id="an-archive" title="POST /api/experiments/{run_id}/archive — скопіювати зупинений прогін в архів (git)">В архів</button>
+        </div>
+        <div class="small muted" id="an-msg" style="margin-top:6px"></div>
+      </div>
+    </aside>
+    <div class="charts" id="an-charts">
+      <div class="chart-card"><h3>Фітнес по поколіннях</h3><div class="chart-box"><canvas id="an-fitness"></canvas></div></div>
+      <div class="chart-card"><h3>Різноманіття популяції</h3><div class="chart-box"><canvas id="an-diversity"></canvas></div></div>
+      <div class="chart-card"><h3>Внесок компонентів у F найкращої особини</h3><div class="chart-box"><canvas id="an-components"></canvas></div></div>
+      <div class="chart-card"><h3>Частка спійманих епізодів</h3><div class="chart-box"><canvas id="an-caught"></canvas></div></div>
+      <p class="small muted" id="an-empty" hidden></p>
     </div>
   </section>
 </main>
