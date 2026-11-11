@@ -218,3 +218,23 @@ def test_kill_9_leaves_readable_metrics_and_checkpoint(tmp_path, demo_creature, 
     assert len(resumed) == stop_at + 1
     common = min(len(killed), len(resumed))
     assert resumed[:common] == killed[:common]
+
+
+def test_champion_is_reselected_on_shared_test_scenarios(data_dir, demo_creature):
+    from app.export import champion
+
+    store = run_full(small_cfg(demo_creature, generations=3))
+    report = champion.select(store, episodes=6, workers=1)
+    assert report == champion.select(store, episodes=6, workers=1)          # відтворювано
+    assert report["checkpoint_generation"] == 3
+    # Рекорд — теж кандидат, тож чемпіон на тестових сценаріях не гірший за нього
+    assert report["champion"]["mean_F"] >= report["record"]["mean_F"]
+    tops = [r["mean_F"] for r in report["top10"]]
+    assert tops == sorted(tops, reverse=True) and tops[0] == report["champion"]["mean_F"]
+    assert report["champion"]["episodes"] == 6
+    paths = champion.write(store, report)
+    assert paths == [str(store.path / "champion.json")]
+
+    empty = RunStore.create(small_cfg(demo_creature))
+    with pytest.raises(ValueError, match="чекпоінт"):
+        champion.select(empty)

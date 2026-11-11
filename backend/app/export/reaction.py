@@ -6,6 +6,9 @@
 побітово однаково (той самий сід → ті самі фази патруля), тож розбіжність після
 появи — це реакція саме на хижака.
 
+Геном — чемпіон із `champion.json` (`python -m app.export.champion`), якщо він є,
+інакше рекорд прогону (`best_genome.json`); поле `genome_source` у звіті.
+
 Результат — `reaction.json` поруч із прогоном в архіві (журнал: `docs/thesis/stage4-experiments.md`).
 
 Запуск у контейнері бекенда: `python -m app.export.reaction <run_dir> [N=40] [out.json]`
@@ -97,8 +100,15 @@ def main():
     run = Path(sys.argv[1])
     n = int(sys.argv[2]) if len(sys.argv) > 2 else 40
     cfg = ExperimentConfig.model_validate_json((run / "config.json").read_text())
-    gj = json.loads((run / "best_genome.json").read_text())
+    # Чемпіон (`champion.py`, переоцінка на однакових сценаріях), якщо його вже
+    # обрано; інакше — рекорд прогону, зміщений легкими поколіннями
+    champion = run / "champion.json"
+    if champion.exists():
+        gj, source = json.loads(champion.read_text())["champion"]["genome"], "champion"
+    else:
+        gj, source = json.loads((run / "best_genome.json").read_text()), "record"
     genome = G.from_json(gj, cfg.creature)
+    print(f"геном: {source}", flush=True)
     n_sp = max(1, len(cfg.environment.spawns))
 
     episodes = []
@@ -133,7 +143,7 @@ def main():
             "mean_cos_away_after": round(float(np.mean([x["cos_away_after"] for x in ev])), 3) if ev else None,
         }
 
-    report = {"run": run.name,
+    report = {"run": run.name, "genome_source": source,
               "seeing": summary("seeing"), "blind": summary("blind"), "episodes": episodes}
     out = Path(sys.argv[3]) if len(sys.argv) > 3 else run / "reaction.json"
     out.write_text(json.dumps(report, ensure_ascii=False, indent=1))

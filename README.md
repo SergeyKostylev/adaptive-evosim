@@ -65,7 +65,8 @@ docker compose exec backend python -m app.export.plots <run_id із першог
 | Продовжити перерваний / подовжити | «Аналітика» → **Продовжити**, або `python -m app.evolution.ga --resume <run_id> [--generations N]` |
 | Графіки | «Аналітика» → **PDF графіків**, або `python -m app.export.plots <run_id> [--out DIR]` |
 | CSV метрик | «Аналітика» → **CSV метрик**, або `python -m app.export.csv_export <run_id> [out.csv]` |
-| Абляція «зрячий / сліпий» | `python -m app.export.reaction experiments/archive/<run_id> [N=40] [out.json]` |
+| Чемпіон прогону | `python -m app.export.champion <run_id> [--episodes 40]` — уся фінальна популяція + рекорд грають однакові тестові епізоди → `champion.json` |
+| Абляція «зрячий / сліпий» | `python -m app.export.reaction experiments/archive/<run_id> [N=40] [out.json]` — бере чемпіона, якщо він є |
 
 Команди `python -m …` виконуються в контейнері: `docker compose exec backend …`.
 

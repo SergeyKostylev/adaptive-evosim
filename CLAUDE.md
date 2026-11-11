@@ -44,7 +44,8 @@ EVOSIM_DATA_DIR=<tmpdir> python -m app.evolution.ga --config exp.json [--generat
 python -m app.evolution.ga --resume <run_id> [--generations N]   # continue from the last checkpoint (bit-identical)
 python -m app.export.plots <run_id> [--out DIR]                  # thesis figures, PNG + PDF → figures/
 python -m app.export.csv_export <run_id> [out.csv]
-python -m app.export.reaction <run_dir> [N=40] [out.json]        # «зрячий / сліпий» ablation
+python -m app.export.champion <run_id> [--episodes 40]           # champion: final population + record re-played on shared test seeds
+python -m app.export.reaction <run_dir> [N=40] [out.json]        # «зрячий / сліпий» ablation (uses champion.json if present)
 ```
 
 Specified but not yet written: `python -m app.core.world --demo` (Stage 2 leftover).
