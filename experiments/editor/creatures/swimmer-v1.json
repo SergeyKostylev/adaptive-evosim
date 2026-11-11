@@ -9,22 +9,12 @@
     },
     "limbs": [
       {
-        "attach_angle": 1.583,
+        "attach_angle": 0.7854,
         "rest_angle": 0.0,
         "segments": [
           {
-            "length": 0.39,
+            "length": 1.0,
             "width": 0.18,
-            "density": 1.0,
-            "joint": {
-              "angle_min": -1.2,
-              "angle_max": 1.2,
-              "motor_torque": 120.0
-            }
-          },
-          {
-            "length": 0.3,
-            "width": 0.126,
             "density": 1.0,
             "joint": {
               "angle_min": -1.2,
@@ -35,22 +25,12 @@
         ]
       },
       {
-        "attach_angle": -1.5596,
+        "attach_angle": -2.3562,
         "rest_angle": 0.0,
         "segments": [
           {
-            "length": 0.39,
+            "length": 1.0,
             "width": 0.18,
-            "density": 1.0,
-            "joint": {
-              "angle_min": -1.2,
-              "angle_max": 1.2,
-              "motor_torque": 120.0
-            }
-          },
-          {
-            "length": 0.3,
-            "width": 0.126,
             "density": 1.0,
             "joint": {
               "angle_min": -1.2,
@@ -61,8 +41,8 @@
         ]
       },
       {
-        "attach_angle": -3.1416,
-        "rest_angle": 0.0007,
+        "attach_angle": -0.7854,
+        "rest_angle": 0.0,
         "segments": [
           {
             "length": 0.7,
@@ -98,5 +78,5 @@
       }
     ]
   },
-  "saved_at": "2026-10-13T20:51:08+00:00"
+  "saved_at": "2026-11-11T10:44:22+00:00"
 }

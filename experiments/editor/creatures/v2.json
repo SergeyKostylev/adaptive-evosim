@@ -1,0 +1,92 @@
+{
+  "creature": {
+    "name": "v2",
+    "body": {
+      "shape": "circle",
+      "radius": 0.8,
+      "vertices": null,
+      "density": 1.0
+    },
+    "limbs": [
+      {
+        "attach_angle": 2.7552,
+        "rest_angle": 0.0214,
+        "segments": [
+          {
+            "length": 1.2,
+            "width": 0.18,
+            "density": 1.0,
+            "joint": {
+              "angle_min": -1.2,
+              "angle_max": 1.2,
+              "motor_torque": 120.0
+            }
+          },
+          {
+            "length": 0.9,
+            "width": 0.126,
+            "density": 1.0,
+            "joint": {
+              "angle_min": -1.2,
+              "angle_max": 1.2,
+              "motor_torque": 120.0
+            }
+          }
+        ]
+      },
+      {
+        "attach_angle": -2.7352,
+        "rest_angle": 0.0,
+        "segments": [
+          {
+            "length": 1.2,
+            "width": 0.18,
+            "density": 1.0,
+            "joint": {
+              "angle_min": -1.2,
+              "angle_max": 1.2,
+              "motor_torque": 120.0
+            }
+          },
+          {
+            "length": 0.9,
+            "width": 0.126,
+            "density": 1.0,
+            "joint": {
+              "angle_min": -1.2,
+              "angle_max": 1.2,
+              "motor_torque": 120.0
+            }
+          }
+        ]
+      },
+      {
+        "attach_angle": -3.1416,
+        "rest_angle": -0.0027,
+        "segments": [
+          {
+            "length": 1.2,
+            "width": 0.18,
+            "density": 1.0,
+            "joint": {
+              "angle_min": -1.2,
+              "angle_max": 1.2,
+              "motor_torque": 120.0
+            }
+          },
+          {
+            "length": 0.9,
+            "width": 0.126,
+            "density": 1.0,
+            "joint": {
+              "angle_min": -1.2,
+              "angle_max": 1.2,
+              "motor_torque": 120.0
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "saved_at": "2026-11-11T10:46:41+00:00"
+}
