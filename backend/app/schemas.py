@@ -350,7 +350,7 @@ class PreviewRequest(_Model):
     `live_training` — етап 4. Нереалізоване джерело повертає 501.
     """
 
-    source: Literal["demo", "genome", "best", "live_training"] = "demo"
+    source: Literal["demo", "genome", "best", "champion", "live_training"] = "demo"
     creature: CreatureConfig | None = None
     environment: EnvironmentConfig | None = Field(default_factory=lambda: EnvironmentConfig())
     genome: GenomeJSON | None = None
@@ -370,8 +370,8 @@ class PreviewRequest(_Model):
         if self.source == "genome" and self.genome is None:
             raise ValueError("для source='genome' потрібне поле genome")
         # `live_training` завжди про поточний прогін менеджера — `run_id` йому не потрібен
-        if self.source == "best" and not self.run_id:
-            raise ValueError("для source='best' потрібен run_id")
+        if self.source in ("best", "champion") and not self.run_id:
+            raise ValueError(f"для source='{self.source}' потрібен run_id")
         if self.genome is not None and self.creature is not None:
             if self.genome.creature_hash != self.creature.creature_hash:
                 raise ValueError("геном побудований для іншої морфології (creature_hash)")
@@ -587,6 +587,8 @@ class RunSummary(BaseModel):
     fitness_weights: FitnessWeights
     #: Приховано зі списку «Аналітики» (лише перегляд, §9.4)
     hidden: bool = False
+    #: Чемпіона обрано (`champion.json`) — є що показати джерелом `champion`
+    champion: bool = False
 
 
 class RunList(BaseModel):

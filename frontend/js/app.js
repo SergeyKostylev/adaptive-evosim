@@ -90,6 +90,8 @@ function initTabs() {
   // Тест-заплив народжується в редакторі, а показується в «Симуляції»:
   // вкладками відає лише app.js (§10.3)
   window.addEventListener('testswim', () => activateTab('simulation'));
+  // «Переглянути наживо» в «Аналітиці» — прев'ю грає на полотні «Симуляції»
+  window.addEventListener('watchrun', () => activateTab('simulation'));
   window.addEventListener('popstate', () => {
     const fromUrl = readUrl();
     if (fromUrl.tab) activateTab(fromUrl.tab, { silent: true });

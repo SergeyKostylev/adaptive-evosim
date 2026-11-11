@@ -271,6 +271,13 @@ class RunStore:
         return ExperimentConfig.model_validate_json(
             (self.path / "config.json").read_text(encoding="utf-8"))
 
+    def load_champion(self) -> dict | None:
+        """`champion.json` (`app.export.champion`) або `None`, якщо чемпіона не обирали."""
+        path = self.path / "champion.json"
+        if not path.exists():
+            return None
+        return json.loads(path.read_text(encoding="utf-8"))
+
     def load_best_genome(self) -> dict | None:
         path = self.path / "best_genome.json"
         if not path.exists():
@@ -296,6 +303,7 @@ class RunStore:
             "last_checkpoint": gens[-1] if gens else None,
             "location": self.location,
             "fitness_weights": cfg.get("fitness_weights", {}),
+            "champion": (self.path / "champion.json").exists(),
         }
 
     def read_generations(self, from_gen: int = 0) -> list[dict]:

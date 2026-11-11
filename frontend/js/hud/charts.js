@@ -17,6 +17,7 @@ import {
   exportUrl, bestGenomeUrl, ApiError,
 } from '../api.js';
 import { connect } from '../ws.js';
+import { startRunPreview } from '../simulation.js';
 
 const $ = (s) => document.querySelector(s);
 
@@ -171,6 +172,7 @@ function renderActions() {
     ['чекпоінт', r.last_checkpoint == null ? 'немає' : `покоління ${r.last_checkpoint}`],
     ['де лежить', r.location === 'runs' ? 'experiments/runs/' : 'лише в архіві'],
     ['архів', r.archived ? 'є (git)' : 'немає'],
+    ['чемпіон', r.champion ? 'обрано (champion.json)' : 'не обрано — у перегляді буде рекорд'],
   ];
   for (const [k, v] of pairs) {
     const a = document.createElement('span');
@@ -182,6 +184,8 @@ function renderActions() {
   kv.children[1].title = r.run_id;
 
   const hasRows = r.generations_done > 0;
+  $('#an-watch').disabled = !hasRows;
+  $('#an-watch').textContent = r.champion ? 'Переглянути чемпіона наживо' : 'Переглянути рекорд наживо';
   setLink('#an-csv', exportUrl(r.run_id, 'csv'));
   setLink('#an-pdf', hasRows ? exportUrl(r.run_id, 'pdf') : null);
   setLink('#an-genome', hasRows ? bestGenomeUrl(r.run_id) : null);
@@ -231,6 +235,13 @@ async function onContinue() {
     message(e instanceof ApiError ? e.message : String(e), 'err');
   }
   await refreshRuns();
+}
+
+async function onWatch() {
+  const r = current();
+  window.dispatchEvent(new CustomEvent('watchrun'));
+  const res = await startRunPreview(r.run_id, r.champion);
+  if (!res) message('прев\'ю не стартувало — див. повідомлення на вкладці «Симуляція»', 'warn');
 }
 
 async function onDelete() {
@@ -442,6 +453,7 @@ export async function initAnalytics({ theme }) {
   $('#an-archive').addEventListener('click', onArchive);
   $('#an-hide').addEventListener('click', onHide);
   $('#an-delete').addEventListener('click', onDelete);
+  $('#an-watch').addEventListener('click', onWatch);
   for (const btn of document.querySelectorAll('#an-filter button')) {
     btn.addEventListener('click', async () => {
       filter = btn.dataset.filter;

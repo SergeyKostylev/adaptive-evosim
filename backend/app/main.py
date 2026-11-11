@@ -378,12 +378,13 @@ async def start_preview(payload: PreviewRequest) -> PreviewResponse:
     прогону, а сам геном перечитується на кожне нове коло епізоду, тож
     прев'ю під час навчання саме підхоплює свіжий рекорд. `live_training` —
     найкраща особина останнього оціненого покоління поточного прогону, теж
-    на кожне коло. Для цих двох кола різняться сідом і точкою появи (§9.4).
+    на кожне коло. `champion` — чемпіон прогону з `champion.json`. Для цих
+    трьох кола різняться сідом і точкою появи (§9.4).
     """
     def generation_of():                    # покоління для HUD (§9.5)
         return None
 
-    varied = payload.source in ("best", "live_training")
+    varied = payload.source in ("best", "champion", "live_training")
 
     if payload.source == "live_training":
         if payload.run_id and payload.run_id != sim.run_id:
@@ -432,6 +433,28 @@ async def start_preview(payload: PreviewRequest) -> PreviewResponse:
             # Прогін іншого етапу: набір сенсорів (`n_in`) відтоді змінився
             raise StarletteHTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+    elif payload.source == "champion":
+        store = _open_run(payload.run_id)
+        run_cfg = store.load_config()
+        creature, environment, weights = (
+            run_cfg.creature, run_cfg.environment, run_cfg.fitness_weights)
+        report = store.load_champion()
+        if report is None:
+            raise StarletteHTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Для прогону {store.run_id} чемпіона ще не обрано "
+                       "(python -m app.export.champion)")
+        try:
+            champion = genome_ops.from_json(report["champion"]["genome"], creature)
+        except genome_ops.GenomeMismatch as exc:
+            raise StarletteHTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc))
+
+        def current_genome():
+            return champion
+
+        def generation_of():
+            return report.get("checkpoint_generation")
     else:
         creature = payload.creature
         environment = payload.environment or EnvironmentConfig()

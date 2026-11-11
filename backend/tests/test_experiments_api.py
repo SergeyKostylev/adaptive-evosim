@@ -197,3 +197,29 @@ def test_archived_run_cannot_be_deleted(client, demo_creature):
     r = client.delete(f"/api/experiments/{run_id}")
     assert r.status_code == 409 and "архів" in r.json()["error"]["message"]
     assert (C.DATA_DIR / C.RUNS_SUBDIR / run_id).exists()
+
+
+def test_preview_champion(client, demo_creature):
+    """Джерело `champion`: геном із champion.json, 409 — поки чемпіона не обрано."""
+    from app.export import champion
+    from app.services.experiment_store import RunStore
+
+    run_id = finished_run(client, demo_creature)
+    assert runs(client)[run_id]["champion"] is False
+    r = client.post("/api/preview", json={"source": "champion", "run_id": run_id})
+    assert r.status_code == 409 and "чемпіона" in r.json()["error"]["message"]
+    assert client.post("/api/preview", json={"source": "champion"}).status_code == 422
+
+    store = RunStore.open(run_id)
+    report = champion.select(store, episodes=4, workers=1)
+    champion.write(store, report)
+    assert runs(client)[run_id]["champion"] is True
+
+    r = client.post("/api/preview", json={"source": "champion", "run_id": run_id})
+    assert r.status_code == 200, r.text
+    with client.websocket_connect("/ws/live") as ws:
+        assert ws.receive_json()["type"] == "scene"
+        frame = ws.receive_json()
+        assert frame["type"] == "frame"
+        assert frame["hud"]["generation"] == report["checkpoint_generation"]
+    client.delete("/api/preview")

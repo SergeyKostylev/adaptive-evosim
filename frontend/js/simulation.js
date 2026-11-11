@@ -417,6 +417,17 @@ async function startBestPreview() {
 }
 
 /**
+ * Перегляд наживо вибраного в «Аналітиці» прогону: чемпіон (`champion.json`),
+ * якщо його обрано, інакше рекорд. Кола — різні епізоди, з поворотом сцени,
+ * якщо він був у прогоні (§9.4).
+ */
+export async function startRunPreview(runId, champion) {
+  const who = champion ? 'чемпіон (найкращий на однакових тестових епізодах)' : 'рекорд прогону';
+  return startLive({ source: champion ? 'champion' : 'best', run_id: runId },
+    { origin: champion ? 'чемпіон' : 'найкраща', label: `прогін ${runId} · ${who}` });
+}
+
+/**
  * Перемикач Headless ↔ Live (§10.2): трансляція найкращої особини останнього
  * покоління. Вимкнення лише гасить прев'ю — навчання триває.
  */
