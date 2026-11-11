@@ -55,7 +55,7 @@
 
 ## Етап 4 — хижак, сенсори, повна фітнес-функція (тег `stage-4`, 2026-10-19 … 11-11)
 
-Деталі: [`stage4-experiments.md`](stage4-experiments.md).
+Оповідь шляху (для тексту): [`stage4-path.md`](stage4-path.md). Деталі: [`stage4-experiments.md`](stage4-experiments.md).
 
 | Дата | Крок | Що з'ясували |
 |---|---|---|
